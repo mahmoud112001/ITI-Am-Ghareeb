@@ -1,0 +1,304 @@
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import api from '../lib/axios'
+import RouteCard from '../components/RouteCard'
+import RatingModal from '../components/RatingModal'
+import AmGhareebAvatar from '../components/AmGhareebAvatar'
+
+// ── Skeleton placeholder ──────────────────────────────────────────────────────
+function SkeletonCard() {
+  return (
+    <div
+      className="rounded-2xl p-5 animate-pulse"
+      style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB' }}
+    >
+      <div className="flex justify-between mb-4">
+        <div className="h-5 w-40 rounded" style={{ backgroundColor: '#E5E7EB' }} />
+        <div className="h-5 w-16 rounded-full" style={{ backgroundColor: '#E5E7EB' }} />
+      </div>
+      <div className="flex gap-2 mb-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-4 w-20 rounded" style={{ backgroundColor: '#E5E7EB' }} />
+        ))}
+      </div>
+      <div className="h-4 w-28 rounded" style={{ backgroundColor: '#E5E7EB' }} />
+    </div>
+  )
+}
+
+// ── Autocomplete input ────────────────────────────────────────────────────────
+function StationAutocomplete({ value, onChange, placeholder, stations }) {
+  const [open, setOpen]           = useState(false)
+  const [highlighted, setHighlighted] = useState(-1)
+  const inputRef = useRef(null)
+  const listRef  = useRef(null)
+
+  const filtered = value.trim()
+    ? stations.filter((s) => s.includes(value.trim())).slice(0, 6)
+    : []
+
+  function select(station) {
+    onChange(station)
+    setOpen(false)
+    setHighlighted(-1)
+  }
+
+  function handleKeyDown(e) {
+    if (!open || filtered.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlighted((h) => Math.min(h + 1, filtered.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlighted((h) => Math.max(h - 1, 0))
+    } else if (e.key === 'Enter' && highlighted >= 0) {
+      e.preventDefault()
+      select(filtered[highlighted])
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+    }
+  }
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e) {
+      if (inputRef.current && !inputRef.current.closest('.autocomplete-wrap')?.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div className="autocomplete-wrap relative flex-1">
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); setHighlighted(-1) }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className="w-full rounded-xl border-2 px-4 py-3 text-sm outline-none transition-all"
+        style={{
+          fontFamily:      'Cairo, sans-serif',
+          borderColor:     '#D1D5DB',
+          backgroundColor: '#FFFFFF',
+        }}
+        onFocus={(e) => { setOpen(true); e.target.style.borderColor = '#F4A833' }}
+        onBlur={(e)  => { e.target.style.borderColor = '#D1D5DB' }}
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <ul
+          ref={listRef}
+          className="absolute top-full mt-1 w-full rounded-xl shadow-lg overflow-hidden z-40"
+          style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB' }}
+        >
+          {filtered.map((s, i) => (
+            <li
+              key={s}
+              onMouseDown={() => select(s)}
+              className="px-4 py-2.5 text-sm cursor-pointer transition-colors"
+              style={{
+                fontFamily:      'Cairo, sans-serif',
+                backgroundColor: i === highlighted ? '#FDF6EC' : '#FFFFFF',
+                color:           '#1B2A4A',
+                fontWeight:      i === highlighted ? 600 : 400,
+              }}
+              onMouseEnter={() => setHighlighted(i)}
+            >
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// ── Swap icon ─────────────────────────────────────────────────────────────────
+function SwapIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <polyline points="17 1 21 5 17 9" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <polyline points="7 23 3 19 7 15" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </svg>
+  )
+}
+
+// ── SearchPage ────────────────────────────────────────────────────────────────
+export default function SearchPage() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+
+  const [origin, setOrigin]           = useState(searchParams.get('origin') || '')
+  const [destination, setDestination] = useState(searchParams.get('destination') || '')
+  const [searched, setSearched]       = useState(false)
+  const [ratingRouteId, setRatingRouteId] = useState(null)
+
+  // Stations for autocomplete
+  const { data: stationsData } = useQuery({
+    queryKey: ['stations'],
+    queryFn:  () => api.get('/api/routes/stations').then((r) => r.data.stations),
+    staleTime: Infinity,
+  })
+  const stations = stationsData || []
+
+  // Search query (disabled until user clicks search)
+  const { data: results, isFetching, isSuccess } = useQuery({
+    queryKey: ['search', origin, destination],
+    queryFn:  () =>
+      api
+        .get('/api/routes/search', { params: { origin, destination } })
+        .then((r) => r.data.results),
+    enabled: searched && !!origin && !!destination,
+  })
+
+  function handleSearch() {
+    if (!origin.trim() || !destination.trim()) return
+    setSearched(true)
+  }
+
+  function swap() {
+    setOrigin(destination)
+    setDestination(origin)
+  }
+
+  const noResults = isSuccess && results?.length === 0
+
+  return (
+    <div
+      className="min-h-screen pb-16"
+      style={{ backgroundColor: '#FDF6EC', fontFamily: 'Cairo, sans-serif' }}
+      dir="rtl"
+    >
+      {/* ── Search bar ──────────────────────────────────────────────────── */}
+      <div
+        className="sticky top-0 z-30 shadow-md"
+        style={{ backgroundColor: '#1B2A4A' }}
+      >
+        <div className="max-w-3xl mx-auto px-4 py-4">
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+            <StationAutocomplete
+              value={origin}
+              onChange={setOrigin}
+              placeholder="من أين؟"
+              stations={stations}
+            />
+
+            {/* Swap button */}
+            <button
+              onClick={swap}
+              className="flex items-center justify-center rounded-xl p-2.5 transition-colors hover:opacity-80 flex-shrink-0"
+              style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' }}
+              aria-label="تبديل النقطتين"
+            >
+              <SwapIcon />
+            </button>
+
+            <StationAutocomplete
+              value={destination}
+              onChange={setDestination}
+              placeholder="إلى أين؟"
+              stations={stations}
+            />
+
+            <button
+              onClick={handleSearch}
+              disabled={!origin.trim() || !destination.trim()}
+              className="rounded-xl px-6 py-3 text-sm font-bold transition-all flex-shrink-0 sm:w-auto w-full"
+              style={{
+                backgroundColor: '#F4A833',
+                color:           '#1B2A4A',
+                opacity:         !origin.trim() || !destination.trim() ? 0.6 : 1,
+                cursor:          !origin.trim() || !destination.trim() ? 'not-allowed' : 'pointer',
+              }}
+            >
+              ابحث
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Results area ────────────────────────────────────────────────── */}
+      <div className="max-w-3xl mx-auto px-4 pt-6">
+
+        {/* Loading skeletons */}
+        {isFetching && (
+          <div className="flex flex-col gap-4">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        )}
+
+        {/* Results */}
+        {!isFetching && isSuccess && results?.length > 0 && (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
+              {results.length} نتيجة لـ «{origin} ← {destination}»
+            </p>
+            {results.map(({ route, accuracyStats }) => (
+              <RouteCard
+                key={route._id || route.routeId}
+                route={route}
+                accuracyStats={accuracyStats}
+                onRateClick={(id) => setRatingRouteId(id)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!isFetching && noResults && (
+          <div
+            className="rounded-2xl p-8 text-center"
+            style={{ backgroundColor: '#FDF6EC', border: '2px solid #F4A833' }}
+          >
+            <AmGhareebAvatar size={64} className="mx-auto mb-4" />
+            <p className="text-lg font-bold mb-1" style={{ color: '#1B2A4A' }}>
+              مفيش نتايج للمسار ده
+            </p>
+            <p className="text-sm mb-5" style={{ color: '#6B7280' }}>
+              اسأل عم غريب مباشرةً وهيساعدك!
+            </p>
+            <button
+              onClick={() => navigate(`/chat?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`)}
+              className="px-6 py-2.5 rounded-xl text-sm font-bold transition-opacity hover:opacity-80"
+              style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
+            >
+              اسأل عم غريب!
+            </button>
+          </div>
+        )}
+
+        {/* Initial state — not yet searched */}
+        {!searched && (
+          <div className="text-center py-16">
+            <AmGhareebAvatar size={80} className="mx-auto mb-4" />
+            <p className="text-base font-semibold" style={{ color: '#1B2A4A' }}>
+              اختار نقطة البداية والوجهة وابحث
+            </p>
+            <p className="text-sm mt-1" style={{ color: '#9CA3AF' }}>
+              بنعرض لك كل الخطوط المتاحة مع تقييمات الدقة
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Rating modal */}
+      {ratingRouteId && (
+        <RatingModal
+          routeId={ratingRouteId}
+          onClose={() => setRatingRouteId(null)}
+          onSuccess={() => setRatingRouteId(null)}
+        />
+      )}
+    </div>
+  )
+}
