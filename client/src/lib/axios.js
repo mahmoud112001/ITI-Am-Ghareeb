@@ -2,17 +2,25 @@ import axios from 'axios'
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
-// ── In-memory token store ─────────────────────────────────────────────────────
-let accessTokenRef = null
-let refreshTokenRef = null
+// ── In-memory token store (initialised from localStorage on page load) ────────
+let accessTokenRef  = localStorage.getItem('accessToken')
+let refreshTokenRef = localStorage.getItem('refreshToken')
 
 /**
- * setTokens — update in-memory token refs.
- * Call after login, register, refresh, and on logout (pass nulls).
+ * setTokens — update in-memory refs AND persist to localStorage.
+ * Pass (null, null) on logout to clear everything.
  */
 export function setTokens(access, refresh) {
-  accessTokenRef = access
+  accessTokenRef  = access
   refreshTokenRef = refresh
+
+  if (access) {
+    localStorage.setItem('accessToken',  access)
+    localStorage.setItem('refreshToken', refresh)
+  } else {
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
+  }
 }
 
 /**
@@ -23,8 +31,6 @@ export function getAccessToken() {
 }
 
 // ── Axios instance ────────────────────────────────────────────────────────────
-// baseURL is '' so that Vite proxy intercepts /api/* in dev.
-// A full URL like http://localhost:5000 would bypass the proxy → CORS error.
 const api = axios.create({
   baseURL: '',
   headers: { 'Content-Type': 'application/json' },
@@ -47,10 +53,6 @@ api.interceptors.response.use(
   async (error) => {
     const originalConfig = error.config
 
-    // Only attempt refresh if:
-    // 1. It's a 401 response
-    // 2. We haven't already retried this request
-    // 3. We have a refresh token available
     if (
       error.response?.status === 401 &&
       !originalConfig._retry &&
@@ -59,7 +61,6 @@ api.interceptors.response.use(
       originalConfig._retry = true
 
       try {
-        // Attempt token refresh — must use full BASE_URL (bypasses proxy intentionally)
         const { data } = await axios.post(`${BASE_URL}/api/auth/refresh`, {
           refreshToken: refreshTokenRef,
         })
@@ -67,11 +68,9 @@ api.interceptors.response.use(
         const { accessToken, refreshToken } = data
         setTokens(accessToken, refreshToken)
 
-        // Retry original request with new access token
         originalConfig.headers.Authorization = `Bearer ${accessToken}`
         return api(originalConfig)
       } catch (refreshError) {
-        // Refresh failed — clear tokens and redirect to login
         setTokens(null, null)
         window.location.href = '/login'
         return Promise.reject(refreshError)
