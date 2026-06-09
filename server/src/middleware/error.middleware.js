@@ -19,7 +19,7 @@ const errorMiddleware = (err, req, res, next) => {
   // ── Mongoose validation error ─────────────────────────────────────────────
   if (err.name === 'ValidationError' && err.errors) {
     const errors = Object.values(err.errors).map((e) => ({
-      field: e.path,
+      field:   e.path,
       message: e.message,
     }))
     return res.status(400).json({ success: false, message: 'بيانات غير صحيحة', errors })
@@ -34,7 +34,6 @@ const errorMiddleware = (err, req, res, next) => {
   if (err.name === 'JsonWebTokenError') {
     return res.status(401).json({ success: false, message: 'جلسة غير صالحة' })
   }
-
   if (err.name === 'TokenExpiredError') {
     return res.status(401).json({ success: false, message: 'انتهت صلاحية الجلسة' })
   }
@@ -42,7 +41,8 @@ const errorMiddleware = (err, req, res, next) => {
   // ── Joi validation error ──────────────────────────────────────────────────
   if (err.isJoi || err.details) {
     const errors = (err.details || []).map((d) => ({
-      field: d.path.join('.'),
+      // d.path can be undefined on some Joi error shapes — guard with optional chaining
+      field:   Array.isArray(d.path) ? d.path.join('.') : (d.context?.label ?? 'unknown'),
       message: d.message,
     }))
     return res.status(400).json({ success: false, message: 'بيانات غير صحيحة', errors })
@@ -55,11 +55,9 @@ const errorMiddleware = (err, req, res, next) => {
 
   // ── Default 500 ───────────────────────────────────────────────────────────
   const response = { success: false, message: 'حدث خطأ في الخادم' }
-
   if (process.env.NODE_ENV === 'development') {
     response.stack = err.stack
   }
-
   return res.status(500).json(response)
 }
 
