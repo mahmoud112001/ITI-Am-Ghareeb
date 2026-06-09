@@ -119,6 +119,21 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-3">
           {user ? (
             <>
+              {/* Admin dashboard button — only visible to admins */}
+              {user.role === 'admin' && (
+                <NavLink
+                  to="/admin"
+                  className="text-sm font-bold rounded-lg px-3 py-1.5 transition-all duration-150"
+                  style={({ isActive }) => ({
+                    backgroundColor: isActive ? '#d4912b' : '#F4A833',
+                    color: '#1B2A4A',
+                    boxShadow: isActive ? 'inset 0 2px 4px rgba(0,0,0,0.15)' : 'none',
+                  })}
+                >
+                  لوحة التحكم
+                </NavLink>
+              )}
+
               <span className="text-sm font-semibold" style={{ color: '#F4A833' }}>
                 {user.name}
               </span>
@@ -192,6 +207,21 @@ export default function Navbar() {
           {/* Auth actions */}
           {user ? (
             <>
+              {/* Admin dashboard button — mobile, only visible to admins */}
+              {user.role === 'admin' && (
+                <NavLink
+                  to="/admin"
+                  className="text-base font-bold rounded-lg px-3 py-2.5 text-center transition-colors duration-150"
+                  style={({ isActive }) => ({
+                    backgroundColor: isActive ? '#d4912b' : '#F4A833',
+                    color: '#1B2A4A',
+                  })}
+                  onClick={() => setDrawerOpen(false)}
+                >
+                  لوحة التحكم
+                </NavLink>
+              )}
+
               <span className="text-sm font-semibold px-3 py-1" style={{ color: '#F4A833' }}>
                 {user.name}
               </span>
