@@ -102,33 +102,134 @@ function MapClickHandler({ onPick }) {
 }
 
 // ── Map picker modal ──────────────────────────────────────────────────────────
-function MapPickerModal({ initialLat, initialLng, stationLabel, onConfirm, onClose }) {
-  const startLat = initialLat && initialLat !== '' ? Number(initialLat) : ALEX_CENTER[0]
-  const startLng = initialLng && initialLng !== '' ? Number(initialLng) : ALEX_CENTER[1]
+function MapUpdater({ lat, lng }) {
+  const map = useMapEvents({})
 
-  const [picked, setPicked] = useState({ lat: startLat, lng: startLng })
-  const hasPin = initialLat !== '' || true // always show a pin
+  useEffect(() => {
+    map.setView([lat, lng], map.getZoom())
+  }, [lat, lng, map])
+
+  return null
+}
+
+function MapPickerModal({
+  initialLat,
+  initialLng,
+  stationLabel,
+  onConfirm,
+  onClose,
+}) {
+  const startLat =
+    initialLat && initialLat !== ''
+      ? Number(initialLat)
+      : ALEX_CENTER[0]
+
+  const startLng =
+    initialLng && initialLng !== ''
+      ? Number(initialLng)
+      : ALEX_CENTER[1]
+
+  const [picked, setPicked] = useState({
+    lat: startLat,
+    lng: startLng,
+  })
+
+  function getCurrentLocation() {
+    if (!navigator.geolocation) {
+      alert('المتصفح لا يدعم تحديد الموقع')
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setPicked({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        })
+      },
+      () => {
+        alert('تعذر الحصول على الموقع الحالي')
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+      }
+    )
+  }
 
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center px-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      style={{
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        backdropFilter: 'blur(4px)',
+      }}
     >
       <div
         className="w-full max-w-lg rounded-2xl overflow-hidden shadow-xl"
-        style={{ backgroundColor: '#FFFFFF', fontFamily: 'Cairo, sans-serif' }}
+        style={{
+          backgroundColor: '#FFFFFF',
+          fontFamily: 'Cairo, sans-serif',
+        }}
         dir="rtl"
       >
         {/* Header */}
-        <div className="flex justify-between items-center px-5 py-4" style={{ borderBottom: '1px solid #E5E7EB' }}>
+        <div
+          className="flex justify-between items-center px-5 py-4"
+          style={{ borderBottom: '1px solid #E5E7EB' }}
+        >
           <div>
-            <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>اختر الموقع من الخريطة</h3>
-            <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{stationLabel}</p>
+            <h3
+              className="text-base font-bold"
+              style={{ color: '#1B2A4A' }}
+            >
+              اختر الموقع من الخريطة
+            </h3>
+
+            <p
+              className="text-xs mt-0.5"
+              style={{ color: '#9CA3AF' }}
+            >
+              {stationLabel}
+            </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
+          </button>
+        </div>
+
+        {/* Current Location Button */}
+        <div
+          className="px-5 py-3 flex justify-center"
+          style={{
+            borderBottom: '1px solid #E5E7EB',
+            backgroundColor: '#F9FAFB',
+          }}
+        >
+          <button
+            onClick={getCurrentLocation}
+            className="rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-80"
+            style={{
+              backgroundColor: '#DBEAFE',
+              color: '#1E40AF',
+            }}
+          >
+            📍 استخدام موقعي الحالي
           </button>
         </div>
 
@@ -137,23 +238,67 @@ function MapPickerModal({ initialLat, initialLng, stationLabel, onConfirm, onClo
           <MapContainer
             center={[picked.lat, picked.lng]}
             zoom={13}
-            style={{ height: '100%', width: '100%' }}
+            style={{
+              height: '100%',
+              width: '100%',
+            }}
           >
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             />
-            <MapClickHandler onPick={(lat, lng) => setPicked({ lat, lng })} />
-            <Marker position={[picked.lat, picked.lng]} />
+
+            <MapUpdater
+              lat={picked.lat}
+              lng={picked.lng}
+            />
+
+            <MapClickHandler
+              onPick={(lat, lng) =>
+                setPicked({ lat, lng })
+              }
+            />
+
+            <Marker
+              position={[picked.lat, picked.lng]}
+              draggable={true}
+              eventHandlers={{
+                dragend: (e) => {
+                  const pos = e.target.getLatLng()
+
+                  setPicked({
+                    lat: pos.lat,
+                    lng: pos.lng,
+                  })
+                },
+              }}
+            />
           </MapContainer>
         </div>
 
-        {/* Coords display */}
-        <div className="px-5 py-3 flex items-center gap-3" style={{ backgroundColor: '#F9FAFB', borderTop: '1px solid #E5E7EB' }}>
-          <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
-            📍 {picked.lat.toFixed(6)}, {picked.lng.toFixed(6)}
+        {/* Coordinates */}
+        <div
+          className="px-5 py-3 flex items-center gap-3"
+          style={{
+            backgroundColor: '#F9FAFB',
+            borderTop: '1px solid #E5E7EB',
+          }}
+        >
+          <span
+            className="text-xs font-semibold"
+            style={{ color: '#6B7280' }}
+          >
+            📍 {picked.lat.toFixed(6)},
+            {' '}
+            {picked.lng.toFixed(6)}
           </span>
-          <span className="text-xs" style={{ color: '#9CA3AF' }}>انقر على الخريطة لتحديد الموقع</span>
+
+          <span
+            className="text-xs"
+            style={{ color: '#9CA3AF' }}
+          >
+            انقر أو اسحب العلامة لتحديد الموقع
+          </span>
         </div>
 
         {/* Actions */}
@@ -161,14 +306,26 @@ function MapPickerModal({ initialLat, initialLng, stationLabel, onConfirm, onClo
           <button
             onClick={onClose}
             className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2"
-            style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
+            style={{
+              borderColor: '#E5E7EB',
+              color: '#6B7280',
+            }}
           >
             إلغاء
           </button>
+
           <button
-            onClick={() => onConfirm(picked.lat.toFixed(6), picked.lng.toFixed(6))}
+            onClick={() =>
+              onConfirm(
+                picked.lat.toFixed(6),
+                picked.lng.toFixed(6)
+              )
+            }
             className="flex-1 rounded-xl py-2.5 text-sm font-bold hover:opacity-80"
-            style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
+            style={{
+              backgroundColor: '#F4A833',
+              color: '#1B2A4A',
+            }}
           >
             تأكيد الموقع
           </button>
