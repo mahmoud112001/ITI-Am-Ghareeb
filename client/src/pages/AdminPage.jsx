@@ -1,6 +1,6 @@
 // src/pages/AdminPage.jsx
-import { useState, useEffect } from 'react'
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import {
@@ -45,8 +45,46 @@ const EMPTY_FORM = {
   type: 'microbus',
   fareMin: '', fareMax: '',
   hoursStart: '', hoursEnd: '',
-  // first station = origin, last station = destination
   stations: [EMPTY_STATION(), EMPTY_STATION()],
+}
+
+// ── Nominatim reverse geocode ─────────────────────────────────────────────────
+async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`,
+      { headers: { 'Accept-Language': 'ar' } }
+    )
+    const data = await res.json()
+    // Prefer neighbourhood > suburb > road > city_district > county > display_name
+    const a = data.address || {}
+    const nameAr =
+      a.neighbourhood ||
+      a.suburb        ||
+      a.road          ||
+      a.city_district ||
+      a.county        ||
+      a.city          ||
+      data.display_name?.split(',')[0] ||
+      ''
+    return nameAr.trim()
+  } catch {
+    return ''
+  }
+}
+
+// ── Nominatim forward search (autocomplete) ───────────────────────────────────
+async function searchPlaces(query) {
+  if (!query || query.length < 2) return []
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&accept-language=ar&countrycodes=eg`,
+      { headers: { 'Accept-Language': 'ar' } }
+    )
+    return await res.json()
+  } catch {
+    return []
+  }
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
@@ -101,203 +139,235 @@ function MapClickHandler({ onPick }) {
   return null
 }
 
-// ── Map picker modal ──────────────────────────────────────────────────────────
-function MapUpdater({ lat, lng }) {
-  const map = useMapEvents({})
-
+// ── FlyTo controller (replaces MapUpdater, reacts to flyTo prop) ──────────────
+function FlyToController({ lat, lng }) {
+  const map = useMap()
   useEffect(() => {
-    map.setView([lat, lng], map.getZoom())
-  }, [lat, lng, map])
-
+    map.flyTo([lat, lng], Math.max(map.getZoom(), 15), { duration: 1 })
+  }, [lat, lng]) // eslint-disable-line react-hooks/exhaustive-deps
   return null
 }
 
+// ── Map picker modal (with reverse geocoding + place search) ──────────────────
 function MapPickerModal({
   initialLat,
   initialLng,
   stationLabel,
-  onConfirm,
+  onConfirm,   // (lat, lng, nameAr) => void
   onClose,
 }) {
-  const startLat =
-    initialLat && initialLat !== ''
-      ? Number(initialLat)
-      : ALEX_CENTER[0]
+  const startLat = initialLat && initialLat !== '' ? Number(initialLat) : ALEX_CENTER[0]
+  const startLng = initialLng && initialLng !== '' ? Number(initialLng) : ALEX_CENTER[1]
 
-  const startLng =
-    initialLng && initialLng !== ''
-      ? Number(initialLng)
-      : ALEX_CENTER[1]
+  const [picked,        setPicked]        = useState({ lat: startLat, lng: startLng })
+  const [resolvedName,  setResolvedName]  = useState('')   // Arabic name from reverse geocode
+  const [isGeocoding,   setIsGeocoding]   = useState(false)
 
-  const [picked, setPicked] = useState({
-    lat: startLat,
-    lng: startLng,
-  })
+  // ── Search state ──────────────────────────────────────────────────────────
+  const [searchQuery,   setSearchQuery]   = useState('')
+  const [suggestions,   setSuggestions]   = useState([])
+  const [isSearching,   setIsSearching]   = useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const searchTimeout   = useRef(null)
+  const searchRef       = useRef(null)
 
-  function getCurrentLocation() {
-    if (!navigator.geolocation) {
-      alert('المتصفح لا يدعم تحديد الموقع')
+  // ── Fly-to trigger (only changes when user picks from suggestions) ────────
+  const [flyTo, setFlyTo] = useState(null)
+
+  // ── Reverse geocode whenever picked coords change ─────────────────────────
+  useEffect(() => {
+    setIsGeocoding(true)
+    setResolvedName('')
+    reverseGeocode(picked.lat, picked.lng).then((name) => {
+      setResolvedName(name)
+      setIsGeocoding(false)
+    })
+  }, [picked.lat, picked.lng])
+
+  // ── Debounced place search ────────────────────────────────────────────────
+  function handleSearchInput(value) {
+    setSearchQuery(value)
+    clearTimeout(searchTimeout.current)
+    if (!value || value.length < 2) {
+      setSuggestions([])
+      setShowSuggestions(false)
       return
     }
+    setIsSearching(true)
+    searchTimeout.current = setTimeout(async () => {
+      const results = await searchPlaces(value)
+      setSuggestions(results)
+      setShowSuggestions(true)
+      setIsSearching(false)
+    }, 400)
+  }
 
+  function handleSuggestionPick(place) {
+    const lat = parseFloat(place.lat)
+    const lng = parseFloat(place.lon)
+    setPicked({ lat, lng })
+    setFlyTo({ lat, lng })
+    setSearchQuery(place.display_name.split(',')[0])
+    setSuggestions([])
+    setShowSuggestions(false)
+  }
+
+  // ── GPS ───────────────────────────────────────────────────────────────────
+  function getCurrentLocation() {
+    if (!navigator.geolocation) { alert('المتصفح لا يدعم تحديد الموقع'); return }
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setPicked({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        })
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        setPicked({ lat, lng })
+        setFlyTo({ lat, lng })
       },
-      () => {
-        alert('تعذر الحصول على الموقع الحالي')
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-      }
+      () => alert('تعذر الحصول على الموقع الحالي'),
+      { enableHighAccuracy: true, timeout: 10000 }
     )
+  }
+
+  // ── Map click/drag handler ────────────────────────────────────────────────
+  function handleMapPick(lat, lng) {
+    setPicked({ lat, lng })
+    // Don't trigger FlyToController for manual clicks — map is already there
   }
 
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center px-4"
-      style={{
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        backdropFilter: 'blur(4px)',
-      }}
+      style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
     >
       <div
         className="w-full max-w-lg rounded-2xl overflow-hidden shadow-xl"
-        style={{
-          backgroundColor: '#FFFFFF',
-          fontFamily: 'Cairo, sans-serif',
-        }}
+        style={{ backgroundColor: '#FFFFFF', fontFamily: 'Cairo, sans-serif' }}
         dir="rtl"
       >
         {/* Header */}
-        <div
-          className="flex justify-between items-center px-5 py-4"
-          style={{ borderBottom: '1px solid #E5E7EB' }}
-        >
+        <div className="flex justify-between items-center px-5 py-4" style={{ borderBottom: '1px solid #E5E7EB' }}>
           <div>
-            <h3
-              className="text-base font-bold"
-              style={{ color: '#1B2A4A' }}
-            >
-              اختر الموقع من الخريطة
-            </h3>
-
-            <p
-              className="text-xs mt-0.5"
-              style={{ color: '#9CA3AF' }}
-            >
-              {stationLabel}
-            </p>
+            <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>اختر الموقع من الخريطة</h3>
+            <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{stationLabel}</p>
           </div>
-
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
         </div>
 
-        {/* Current Location Button */}
+        {/* ── Search box ── */}
         <div
-          className="px-5 py-3 flex justify-center"
-          style={{
-            borderBottom: '1px solid #E5E7EB',
-            backgroundColor: '#F9FAFB',
-          }}
+          className="px-5 py-3"
+          style={{ borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB', position: 'relative' }}
+          ref={searchRef}
         >
+          <div className="relative">
+            {/* Search icon */}
+            <span className="absolute top-1/2 -translate-y-1/2 right-3 text-gray-400 pointer-events-none">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => handleSearchInput(e.target.value)}
+              onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+              placeholder="ابحث عن مكان… (مثال: محطة مصر، الإسكندرية)"
+              className="w-full rounded-lg border px-3 py-2 pr-9 text-sm outline-none"
+              style={{ borderColor: '#D1D5DB', fontFamily: 'Cairo, sans-serif' }}
+              onFocus={(e) => { e.target.style.borderColor = '#F4A833'; suggestions.length > 0 && setShowSuggestions(true) }}
+              onBlur={(e)  => { e.target.style.borderColor = '#D1D5DB'; setTimeout(() => setShowSuggestions(false), 200) }}
+            />
+            {isSearching && (
+              <span className="absolute top-1/2 -translate-y-1/2 left-3">
+                <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: '#F4A833', borderTopColor: 'transparent' }} />
+              </span>
+            )}
+          </div>
+
+          {/* Suggestions dropdown */}
+          {showSuggestions && suggestions.length > 0 && (
+            <div
+              className="absolute left-5 right-5 rounded-xl shadow-lg overflow-hidden z-10 mt-1"
+              style={{ backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', top: '100%', zIndex: 9999 }}
+            >
+              {suggestions.map((place) => (
+                <button
+                  key={place.place_id}
+                  onMouseDown={() => handleSuggestionPick(place)}
+                  className="w-full text-right px-4 py-2.5 text-sm hover:bg-amber-50 flex items-start gap-2 transition-colors"
+                  style={{ color: '#1B2A4A', borderBottom: '1px solid #F3F4F6' }}
+                >
+                  <span className="mt-0.5 shrink-0" style={{ color: '#F4A833' }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z" /><circle cx="12" cy="10" r="3" />
+                    </svg>
+                  </span>
+                  <span className="leading-snug">
+                    <span className="font-semibold block">{place.display_name.split(',')[0]}</span>
+                    <span className="text-xs block" style={{ color: '#9CA3AF' }}>
+                      {place.display_name.split(',').slice(1, 3).join('،')}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* GPS button */}
+        <div className="px-5 py-2 flex justify-center" style={{ backgroundColor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
           <button
             onClick={getCurrentLocation}
-            className="rounded-lg px-4 py-2 text-sm font-semibold hover:opacity-80"
-            style={{
-              backgroundColor: '#DBEAFE',
-              color: '#1E40AF',
-            }}
+            className="rounded-lg px-4 py-1.5 text-sm font-semibold hover:opacity-80"
+            style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }}
           >
             📍 استخدام موقعي الحالي
           </button>
         </div>
 
         {/* Map */}
-        <div style={{ height: 340 }}>
-          <MapContainer
-            center={[picked.lat, picked.lng]}
-            zoom={13}
-            style={{
-              height: '100%',
-              width: '100%',
-            }}
-          >
+        <div style={{ height: 300 }}>
+          <MapContainer center={[picked.lat, picked.lng]} zoom={13} style={{ height: '100%', width: '100%' }}>
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             />
-
-            <MapUpdater
-              lat={picked.lat}
-              lng={picked.lng}
-            />
-
-            <MapClickHandler
-              onPick={(lat, lng) =>
-                setPicked({ lat, lng })
-              }
-            />
-
+            {flyTo && <FlyToController lat={flyTo.lat} lng={flyTo.lng} />}
+            <MapClickHandler onPick={handleMapPick} />
             <Marker
               position={[picked.lat, picked.lng]}
               draggable={true}
               eventHandlers={{
                 dragend: (e) => {
                   const pos = e.target.getLatLng()
-
-                  setPicked({
-                    lat: pos.lat,
-                    lng: pos.lng,
-                  })
+                  setPicked({ lat: pos.lat, lng: pos.lng })
                 },
               }}
             />
           </MapContainer>
         </div>
 
-        {/* Coordinates */}
+        {/* Coordinates + resolved name */}
         <div
-          className="px-5 py-3 flex items-center gap-3"
-          style={{
-            backgroundColor: '#F9FAFB',
-            borderTop: '1px solid #E5E7EB',
-          }}
+          className="px-5 py-3 flex flex-col gap-1"
+          style={{ backgroundColor: '#F9FAFB', borderTop: '1px solid #E5E7EB' }}
         >
-          <span
-            className="text-xs font-semibold"
-            style={{ color: '#6B7280' }}
-          >
-            📍 {picked.lat.toFixed(6)},
-            {' '}
-            {picked.lng.toFixed(6)}
-          </span>
-
-          <span
-            className="text-xs"
-            style={{ color: '#9CA3AF' }}
-          >
-            انقر أو اسحب العلامة لتحديد الموقع
+          {/* Arabic name from reverse geocode */}
+          <div className="flex items-center gap-2 min-h-5">
+            {isGeocoding ? (
+              <span className="text-xs" style={{ color: '#9CA3AF' }}>جاري التعرف على المكان…</span>
+            ) : resolvedName ? (
+              <>
+                <span className="text-xs font-bold" style={{ color: '#1B2A4A' }}>🏷 {resolvedName}</span>
+                <span className="text-xs" style={{ color: '#9CA3AF' }}>سيُستخدم اسمًا للمحطة</span>
+              </>
+            ) : null}
+          </div>
+          {/* Raw coords */}
+          <span className="text-xs font-mono" style={{ color: '#9CA3AF' }}>
+            {picked.lat.toFixed(6)}, {picked.lng.toFixed(6)} — انقر أو اسحب العلامة لتحديد الموقع
           </span>
         </div>
 
@@ -306,28 +376,23 @@ function MapPickerModal({
           <button
             onClick={onClose}
             className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2"
-            style={{
-              borderColor: '#E5E7EB',
-              color: '#6B7280',
-            }}
+            style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
           >
             إلغاء
           </button>
-
           <button
             onClick={() =>
               onConfirm(
                 picked.lat.toFixed(6),
-                picked.lng.toFixed(6)
+                picked.lng.toFixed(6),
+                resolvedName   // ← Arabic name passed back
               )
             }
-            className="flex-1 rounded-xl py-2.5 text-sm font-bold hover:opacity-80"
-            style={{
-              backgroundColor: '#F4A833',
-              color: '#1B2A4A',
-            }}
+            disabled={isGeocoding}
+            className="flex-1 rounded-xl py-2.5 text-sm font-bold hover:opacity-80 disabled:opacity-50"
+            style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
           >
-            تأكيد الموقع
+            {isGeocoding ? 'جاري التعرف…' : 'تأكيد الموقع'}
           </button>
         </div>
       </div>
@@ -343,7 +408,6 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
 
   function set(key, val) { setForm((f) => ({ ...f, [key]: val })) }
 
-  // ── Station helpers ─────────────────────────────────────────────────────────
   function setStation(index, key, val) {
     setForm((f) => {
       const stations = f.stations.map((s, i) => i === index ? { ...s, [key]: val } : s)
@@ -352,44 +416,33 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
   }
 
   function addStation() {
-    setForm((f) => ({
-      ...f,
-      stations: [...f.stations, EMPTY_STATION()],
-    }))
+    setForm((f) => ({ ...f, stations: [...f.stations, EMPTY_STATION()] }))
   }
 
   function removeStation(index) {
     setForm((f) => {
       if (f.stations.length <= 2) return f
-      const stations = f.stations.filter((_, i) => i !== index)
-      return { ...f, stations }
+      return { ...f, stations: f.stations.filter((_, i) => i !== index) }
     })
   }
 
-  function openMapPicker(index, label) {
-    setMapPicker({ index, label })
-  }
+  function openMapPicker(index, label) { setMapPicker({ index, label }) }
 
-  function handleMapConfirm(lat, lng) {
+  // ── Updated: now receives nameAr from reverse geocode ─────────────────────
+  function handleMapConfirm(lat, lng, resolvedNameAr) {
     setStation(mapPicker.index, 'lat', lat)
     setStation(mapPicker.index, 'lng', lng)
+    // Only auto-fill nameAr if it's currently empty (don't overwrite user input)
+    if (resolvedNameAr && !form.stations[mapPicker.index]?.nameAr) {
+      setStation(mapPicker.index, 'nameAr', resolvedNameAr)
+    }
     setMapPicker(null)
   }
 
-  // ── Validation & submit ─────────────────────────────────────────────────────
   function handleSave() {
-    if (!form.routeId || !form.nameAr || !form.nameEn) {
-      setErr('يرجى ملء معرف الخط والاسمين')
-      return
-    }
-    if (!form.fareMin || !form.fareMax) {
-      setErr('يرجى إدخال التعريفة')
-      return
-    }
-    if (form.stations.some((s) => !s.nameAr || !s.nameEn)) {
-      setErr('يرجى ملء أسماء جميع المحطات')
-      return
-    }
+    if (!form.routeId || !form.nameAr || !form.nameEn) { setErr('يرجى ملء معرف الخط والاسمين'); return }
+    if (!form.fareMin || !form.fareMax)                 { setErr('يرجى إدخال التعريفة');         return }
+    if (form.stations.some((s) => !s.nameAr || !s.nameEn)) { setErr('يرجى ملء أسماء جميع المحطات'); return }
 
     setErr('')
 
@@ -397,23 +450,11 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
       order:  i + 1,
       nameAr: s.nameAr,
       nameEn: s.nameEn,
-      coords: {
-        lat: s.lat !== '' ? Number(s.lat) : 0,
-        lng: s.lng !== '' ? Number(s.lng) : 0,
-      },
+      coords: { lat: s.lat !== '' ? Number(s.lat) : 0, lng: s.lng !== '' ? Number(s.lng) : 0 },
     }))
 
-    // Derive origin & destination from first / last station
-    const origin = {
-      nameAr: stations[0].nameAr,
-      nameEn: stations[0].nameEn,
-      coords: stations[0].coords,
-    }
-    const destination = {
-      nameAr: stations[stations.length - 1].nameAr,
-      nameEn: stations[stations.length - 1].nameEn,
-      coords: stations[stations.length - 1].coords,
-    }
+    const origin      = { nameAr: stations[0].nameAr,                     nameEn: stations[0].nameEn,                     coords: stations[0].coords }
+    const destination = { nameAr: stations[stations.length - 1].nameAr,   nameEn: stations[stations.length - 1].nameEn,   coords: stations[stations.length - 1].coords }
 
     onSave({
       routeId:        form.routeId,
@@ -440,7 +481,6 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
           style={{ backgroundColor: '#FFFFFF', maxHeight: '90vh', fontFamily: 'Cairo, sans-serif' }}
           dir="rtl"
         >
-          {/* Header */}
           <div className="flex justify-between items-center mb-5">
             <h2 className="text-lg font-bold" style={{ color: '#1B2A4A' }}>{title}</h2>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -451,8 +491,6 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
           </div>
 
           <div className="flex flex-col gap-3">
-
-            {/* ── Basic info ── */}
             <SectionLabel>معلومات الخط</SectionLabel>
             <Field label="معرف الخط *"          value={form.routeId} onChange={(v) => set('routeId', v)} placeholder="ALEX-MICRO-01" />
             <Field label="اسم الخط بالعربي *"    value={form.nameAr}  onChange={(v) => set('nameAr',  v)} placeholder="محطة مصر ← سيدي بشر" />
@@ -470,7 +508,6 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
               </select>
             </div>
 
-            {/* ── Fare & hours ── */}
             <SectionLabel>التعريفة والمواعيد</SectionLabel>
             <div className="grid grid-cols-2 gap-3">
               <Field label="أدنى تعريفة *" value={form.fareMin}    onChange={(v) => set('fareMin',    v)} type="number" placeholder="8" />
@@ -481,7 +518,6 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
               <Field label="نهاية التشغيل" value={form.hoursEnd}   onChange={(v) => set('hoursEnd',   v)} placeholder="23:00" />
             </div>
 
-            {/* ── Stations ── */}
             <SectionLabel>المحطات — الأولى هي الانطلاق، الأخيرة هي الوصول</SectionLabel>
 
             {form.stations.map((station, i) => {
@@ -492,57 +528,28 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
               const hasCoords    = station.lat !== '' && station.lng !== ''
 
               return (
-                <div
-                  key={i}
-                  className="rounded-xl p-3 flex flex-col gap-2"
-                  style={{ backgroundColor: '#F9FAFB', border: `2px solid ${borderColor}` }}
-                >
-                  {/* Station header */}
+                <div key={i} className="rounded-xl p-3 flex flex-col gap-2" style={{ backgroundColor: '#F9FAFB', border: `2px solid ${borderColor}` }}>
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-bold" style={{ color: '#374151' }}>{stationLabel}</span>
                     {!isFirst && !isLast && form.stations.length > 2 && (
-                      <button onClick={() => removeStation(i)} className="text-xs font-semibold" style={{ color: '#DC2626' }}>
-                        حذف
-                      </button>
+                      <button onClick={() => removeStation(i)} className="text-xs font-semibold" style={{ color: '#DC2626' }}>حذف</button>
                     )}
                   </div>
-
-                  {/* Name fields */}
                   <div className="grid grid-cols-2 gap-2">
                     <Field label="بالعربي *"    value={station.nameAr} onChange={(v) => setStation(i, 'nameAr', v)} placeholder="محطة مصر" />
                     <Field label="بالإنجليزي *" value={station.nameEn} onChange={(v) => setStation(i, 'nameEn', v)} placeholder="Misr Station" />
                   </div>
-
-                  {/* Coords row */}
                   <div className="grid grid-cols-2 gap-2">
-                    <Field
-                      label="خط العرض (Lat)"
-                      value={station.lat}
-                      onChange={(v) => setStation(i, 'lat', v)}
-                      type="number"
-                      placeholder="31.2001"
-                    />
-                    <Field
-                      label="خط الطول (Lng)"
-                      value={station.lng}
-                      onChange={(v) => setStation(i, 'lng', v)}
-                      type="number"
-                      placeholder="29.9187"
-                    />
+                    <Field label="خط العرض (Lat)" value={station.lat} onChange={(v) => setStation(i, 'lat', v)} type="number" placeholder="31.2001" />
+                    <Field label="خط الطول (Lng)" value={station.lng} onChange={(v) => setStation(i, 'lng', v)} type="number" placeholder="29.9187" />
                   </div>
-
-                  {/* Map picker button */}
                   <button
                     onClick={() => openMapPicker(i, stationLabel)}
                     className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold w-full justify-center transition-opacity hover:opacity-80"
-                    style={{
-                      backgroundColor: hasCoords ? '#D1FAE5' : '#FEF3C7',
-                      color:           hasCoords ? '#065F46' : '#92400E',
-                    }}
+                    style={{ backgroundColor: hasCoords ? '#D1FAE5' : '#FEF3C7', color: hasCoords ? '#065F46' : '#92400E' }}
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z" />
-                      <circle cx="12" cy="10" r="3" />
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z" /><circle cx="12" cy="10" r="3" />
                     </svg>
                     {hasCoords ? `📍 ${Number(station.lat).toFixed(4)}, ${Number(station.lng).toFixed(4)}` : 'اختر من الخريطة'}
                   </button>
@@ -557,34 +564,19 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
             >
               + إضافة محطة
             </button>
-
           </div>
 
           {err && <p className="text-sm text-center mt-3" style={{ color: '#DC2626' }}>{err}</p>}
 
-          {/* Actions */}
           <div className="flex gap-3 mt-6">
-            <button
-              onClick={onClose}
-              disabled={isPending}
-              className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2"
-              style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
-            >
-              إلغاء
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={isPending}
-              className="flex-1 rounded-xl py-2.5 text-sm font-bold hover:opacity-80 disabled:opacity-50"
-              style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
-            >
+            <button onClick={onClose} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>إلغاء</button>
+            <button onClick={handleSave} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-bold hover:opacity-80 disabled:opacity-50" style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}>
               {isPending ? 'جاري الحفظ...' : 'حفظ'}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Map picker renders on top of the form modal */}
       {mapPicker && (
         <MapPickerModal
           initialLat={form.stations[mapPicker.index]?.lat}
@@ -666,43 +658,26 @@ export default function AdminPage() {
   const deleteMutation  = useDeleteRoute()
   const restoreMutation = useUpdateRoute()
 
-  function handleCreate(body) {
-    createMutation.mutate(body, { onSuccess: () => setAddOpen(false) })
-  }
-
-  function handleUpdate(body) {
-    updateMutation.mutate({ id: editRoute._id, body }, { onSuccess: () => setEditRoute(null) })
-  }
-
-  function handleDelete() {
-    deleteMutation.mutate(deleteRoute._id, { onSuccess: () => setDeleteRoute(null) })
-  }
-
-  function handleRestore(routeId) {
-    restoreMutation.mutate({ id: routeId, body: { isActive: true } })
-  }
+  function handleCreate(body) { createMutation.mutate(body, { onSuccess: () => setAddOpen(false) }) }
+  function handleUpdate(body) { updateMutation.mutate({ id: editRoute._id, body }, { onSuccess: () => setEditRoute(null) }) }
+  function handleDelete()     { deleteMutation.mutate(deleteRoute._id, { onSuccess: () => setDeleteRoute(null) }) }
+  function handleRestore(id)  { restoreMutation.mutate({ id, body: { isActive: true } }) }
 
   return (
     <div className="min-h-screen pb-16" style={{ backgroundColor: '#FDF6EC', fontFamily: 'Cairo, sans-serif' }} dir="rtl">
       <div className="max-w-5xl mx-auto px-4 pt-8">
 
-        {/* Heading */}
         <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <h1 className="text-2xl font-black" style={{ color: '#1B2A4A' }}>لوحة التحكم</h1>
-          <button
-            onClick={() => setAddOpen(true)}
-            className="rounded-xl px-5 py-2.5 text-sm font-bold hover:opacity-80"
-            style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
-          >
+          <button onClick={() => setAddOpen(true)} className="rounded-xl px-5 py-2.5 text-sm font-bold hover:opacity-80" style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}>
             ＋ إضافة خط جديد
           </button>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <StatCard icon="🚌" value={s.totalRoutes}  label="إجمالي الخطوط"     />
+          <StatCard icon="🚌" value={s.totalRoutes}  label="إجمالي الخطوط" />
           <StatCard icon="👥" value={s.totalUsers}   label="إجمالي المستخدمين" />
-          <StatCard icon="⭐" value={s.totalRatings} label="إجمالي التقييمات"  />
+          <StatCard icon="⭐" value={s.totalRatings} label="إجمالي التقييمات" />
           <StatCard
             icon="🔍"
             value={s.topSearched?.[0] ? `${s.topSearched[0].origin} ← ${s.topSearched[0].destination}` : '—'}
@@ -710,7 +685,6 @@ export default function AdminPage() {
           />
         </div>
 
-        {/* Routes table */}
         <div className="rounded-2xl overflow-hidden shadow-sm" style={{ backgroundColor: '#FFFFFF' }}>
           <div className="p-5 border-b" style={{ borderColor: '#E5E7EB' }}>
             <h2 className="text-base font-bold" style={{ color: '#1B2A4A' }}>إدارة الخطوط</h2>
@@ -744,22 +718,16 @@ export default function AdminPage() {
                           <p className="truncate">{route.nameAr}</p>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.color }}>
-                            {typeLabel}
-                          </span>
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.color }}>{typeLabel}</span>
                         </td>
                         <td className="px-4 py-3 text-xs" style={{ color: '#6B7280' }}>{route.fare?.min}–{route.fare?.max} جنيه</td>
                         <td className="px-4 py-3">
-                          <span
-                            className="text-xs font-bold px-2 py-0.5 rounded-full"
-                            style={{ backgroundColor: route.isActive ? '#D1FAE5' : '#FEE2E2', color: route.isActive ? '#065F46' : '#991B1B' }}
-                          >
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: route.isActive ? '#D1FAE5' : '#FEE2E2', color: route.isActive ? '#065F46' : '#991B1B' }}>
                             {route.isActive ? 'نشط' : 'محذوف'}
                           </span>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-2">
-                            {/* Edit — always available */}
                             <button
                               onClick={() => setEditRoute({ _id: route._id, form: buildEditForm(route) })}
                               className="p-1.5 rounded-lg hover:opacity-70"
@@ -771,8 +739,6 @@ export default function AdminPage() {
                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                               </svg>
                             </button>
-
-                            {/* Delete OR Restore depending on isActive */}
                             {route.isActive ? (
                               <button
                                 onClick={() => setDeleteRoute(route)}
@@ -811,7 +777,6 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex justify-center items-center gap-3 p-4" style={{ borderTop: '1px solid #E5E7EB' }}>
               <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:cursor-not-allowed" style={{ borderColor: '#E5E7EB', color: page === 1 ? '#D1D5DB' : '#1B2A4A' }}>السابق</button>
@@ -822,16 +787,9 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Modals */}
-      {addOpen && (
-        <RouteFormModal title="إضافة خط جديد" onClose={() => setAddOpen(false)} onSave={handleCreate} isPending={createMutation.isPending} />
-      )}
-      {editRoute && (
-        <RouteFormModal title="تعديل الخط" initial={editRoute.form} onClose={() => setEditRoute(null)} onSave={handleUpdate} isPending={updateMutation.isPending} />
-      )}
-      {deleteRoute && (
-        <DeleteDialog routeName={deleteRoute.nameAr} onCancel={() => setDeleteRoute(null)} onConfirm={handleDelete} isPending={deleteMutation.isPending} />
-      )}
+      {addOpen    && <RouteFormModal title="إضافة خط جديد" onClose={() => setAddOpen(false)} onSave={handleCreate} isPending={createMutation.isPending} />}
+      {editRoute  && <RouteFormModal title="تعديل الخط" initial={editRoute.form} onClose={() => setEditRoute(null)} onSave={handleUpdate} isPending={updateMutation.isPending} />}
+      {deleteRoute && <DeleteDialog routeName={deleteRoute.nameAr} onCancel={() => setDeleteRoute(null)} onConfirm={handleDelete} isPending={deleteMutation.isPending} />}
     </div>
   )
 }
