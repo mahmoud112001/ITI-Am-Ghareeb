@@ -1,4 +1,4 @@
-const { Route, SearchHistory, User } = require('../models/index.js')
+const { Route, SearchHistory, User } = require("../models/index.js");
 
 /**
  * searchRoutes — finds active routes where stations contain both the origin
@@ -6,8 +6,8 @@ const { Route, SearchHistory, User } = require('../models/index.js')
  * Optionally saves a SearchHistory record when a userId is provided.
  */
 async function searchRoutes(originQuery, destinationQuery, userId = null) {
-  const originRegex = new RegExp(originQuery, 'i')
-  const destRegex = new RegExp(destinationQuery, 'i')
+  const originRegex = new RegExp(originQuery, "i");
+  const destRegex = new RegExp(destinationQuery, "i");
 
   const routes = await Route.find({
     isActive: true,
@@ -27,7 +27,7 @@ async function searchRoutes(originQuery, destinationQuery, userId = null) {
         },
       },
     ],
-  })
+  });
 
   if (userId) {
     await SearchHistory.create({
@@ -35,17 +35,17 @@ async function searchRoutes(originQuery, destinationQuery, userId = null) {
       originQuery,
       destinationQuery,
       routesFound: routes.length,
-    })
+    });
   }
 
   const routesWithStats = await Promise.all(
     routes.map(async (route) => {
-      const accuracyStats = await Route.getAccuracyStats(route.routeId)
-      return { route, accuracyStats }
-    })
-  )
+      const accuracyStats = await Route.getAccuracyStats(route.routeId);
+      return { route, accuracyStats };
+    }),
+  );
 
-  return routesWithStats
+  return routesWithStats;
 }
 
 /**
@@ -55,13 +55,13 @@ async function searchRoutes(originQuery, destinationQuery, userId = null) {
 async function getStations() {
   const result = await Route.aggregate([
     { $match: { isActive: true } },
-    { $unwind: '$stations' },
-    { $group: { _id: '$stations.nameAr' } },
+    { $unwind: "$stations" },
+    { $group: { _id: "$stations.nameAr" } },
     { $sort: { _id: 1 } },
-    { $project: { _id: 0, name: '$_id' } },
-  ])
+    { $project: { _id: 0, name: "$_id" } },
+  ]);
 
-  return result.map((r) => r.name)
+  return result.map((r) => r.name);
 }
 
 /**
@@ -69,13 +69,13 @@ async function getStations() {
  * along with its accuracy stats. Throws 404 if not found.
  */
 async function getRouteById(routeId) {
-  const route = await Route.findOne({ routeId, isActive: true })
+  const route = await Route.findOne({ routeId, isActive: true });
   if (!route) {
-    throw { statusCode: 404, message: 'الخط غير موجود' }
+    throw { statusCode: 404, message: "الخط غير موجود" };
   }
 
-  const accuracyStats = await Route.getAccuracyStats(routeId)
-  return { route, accuracyStats }
+  const accuracyStats = await Route.getAccuracyStats(routeId);
+  return { route, accuracyStats };
 }
 
 /**
@@ -83,18 +83,18 @@ async function getRouteById(routeId) {
  * Throws 404 if the route doesn't exist or has been soft-deleted.
  */
 async function saveRoute(userId, routeId) {
-  const route = await Route.findOne({ routeId, isActive: true })
+  const route = await Route.findOne({ routeId, isActive: true });
   if (!route) {
-    throw { statusCode: 404, message: 'الخط غير موجود' }
+    throw { statusCode: 404, message: "الخط غير موجود" };
   }
 
   await User.findByIdAndUpdate(
     userId,
     { $addToSet: { savedRoutes: route._id } },
-    { new: true }
-  )
+    { new: true },
+  );
 
-  return { message: 'تم حفظ الخط ✓' }
+  return { message: "تم حفظ الخط ✓" };
 }
 
 /**
@@ -102,18 +102,27 @@ async function saveRoute(userId, routeId) {
  * Throws 404 if the route doesn't exist or has been soft-deleted.
  */
 async function unsaveRoute(userId, routeId) {
-  const route = await Route.findOne({ routeId, isActive: true })
+  const route = await Route.findOne({ routeId, isActive: true });
   if (!route) {
-    throw { statusCode: 404, message: 'الخط غير موجود' }
+    throw { statusCode: 404, message: "الخط غير موجود" };
   }
 
   await User.findByIdAndUpdate(
     userId,
     { $pull: { savedRoutes: route._id } },
-    { new: true }
-  )
+    { new: true },
+  );
 
-  return { message: 'تم إزالة الخط ✓' }
+  return { message: "تم إزالة الخط ✓" };
+}
+
+async function clearSavedRoutes(userId) {
+  await User.findByIdAndUpdate(
+    userId,
+    { $set: { savedRoutes: [] } },
+    { new: true },
+  );
+  return { message: "تم حذف كل الخطوط المحفوظة ✓" };
 }
 
 /**
@@ -124,7 +133,7 @@ async function getHistory(userId) {
   return SearchHistory.find({ user: userId })
     .sort({ createdAt: -1 })
     .limit(20)
-    .lean()
+    .lean();
 }
 
 /**
@@ -132,19 +141,19 @@ async function getHistory(userId) {
  * attached to each. Throws 404 if the user is not found.
  */
 async function getSavedRoutes(userId) {
-  const user = await User.findById(userId).populate('savedRoutes')
+  const user = await User.findById(userId).populate("savedRoutes");
   if (!user) {
-    throw { statusCode: 404, message: 'المستخدم غير موجود' }
+    throw { statusCode: 404, message: "المستخدم غير موجود" };
   }
 
   const routesWithStats = await Promise.all(
     user.savedRoutes.map(async (route) => {
-      const accuracyStats = await Route.getAccuracyStats(route.routeId)
-      return { ...route.toObject(), accuracyStats }
-    })
-  )
+      const accuracyStats = await Route.getAccuracyStats(route.routeId);
+      return { ...route.toObject(), accuracyStats };
+    }),
+  );
 
-  return routesWithStats
+  return routesWithStats;
 }
 
 module.exports = {
@@ -153,6 +162,7 @@ module.exports = {
   getRouteById,
   saveRoute,
   unsaveRoute,
+  clearSavedRoutes,
   getHistory,
   getSavedRoutes,
-}
+};
