@@ -127,10 +127,40 @@ function StationsStepper({ stations }) {
 }
 
 // ── RouteCard ─────────────────────────────────────────────────────────────────
-export default function RouteCard({ route, accuracyStats, onRateClick, compact = false }) {
+export default function RouteCard({
+  route,
+  accuracyStats,
+  onRateClick,
+  onSaveClick,
+  onUnsaveClick,
+  isSaved = false,
+  isSaving = false,
+  isJustSaved = false,
+  compact = false,
+}) {
   const navigate = useNavigate()
   const typeConf = TYPE_CONFIG[route.type] || TYPE_CONFIG.microbus
   const isPeak   = isCurrentlyPeak(route.peakHours)
+
+  const saveButtonLabel = isSaving
+    ? 'جارٍ الحفظ...'
+    : isJustSaved
+      ? 'Saved !'
+      : isSaved
+        ? 'الغاء حفظ الخط'
+        : 'احفظ الخط'
+
+  const saveButtonStyle = isSaved
+    ? { borderColor: '#DC2626', color: '#B91C1C', backgroundColor: 'transparent' }
+    : { borderColor: '#10B981', color: '#047857', backgroundColor: 'transparent' }
+
+  function handleSaveClick() {
+    if (isSaved) {
+      onUnsaveClick?.(route.routeId)
+    } else {
+      onSaveClick?.(route.routeId)
+    }
+  }
 
   return (
     <div
@@ -203,6 +233,16 @@ export default function RouteCard({ route, accuracyStats, onRateClick, compact =
           >
             قيّم الخط
           </button>
+          {(onSaveClick || onUnsaveClick) && (
+            <button
+              onClick={handleSaveClick}
+              disabled={isSaving}
+              className="flex-1 rounded-xl py-2 text-sm font-semibold border-2 transition-colors hover:opacity-80 disabled:opacity-60 disabled:cursor-not-allowed"
+              style={saveButtonStyle}
+            >
+              {saveButtonLabel}
+            </button>
+          )}
           <button
             onClick={() => navigate(`/map?routeId=${route.routeId}`)}
             className="flex-1 rounded-xl py-2 text-sm font-semibold border-2 transition-colors hover:opacity-80"
