@@ -36,6 +36,7 @@ export default function MapPage() {
 
   const [userLocation, setUserLocation] = useState(null)
   const [locError, setLocError]         = useState('')
+  const [nearestRoute, setNearestRoute] = useState(null)
 
   // Fetch the selected route
   const { data, isLoading } = useQuery({
@@ -54,6 +55,10 @@ export default function MapPage() {
   // Polyline positions
   const polylineCoords = validStations.map((s) => [s.coords.lat, s.coords.lng])
 
+  // Nearest route (from user's location) computed stations/coords
+  const nearestValidStations = nearestRoute ? (nearestRoute.stations || []).filter(s => s.coords?.lat && s.coords?.lng) : []
+  const nearestPolylineCoords = nearestValidStations.map((s) => [s.coords.lat, s.coords.lng])
+
   function handleLocate() {
     setLocError('')
     if (!navigator.geolocation) {
@@ -61,7 +66,18 @@ export default function MapPage() {
       return
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => setUserLocation([pos.coords.latitude, pos.coords.longitude]),
+      async (pos) => {
+        const coordsArr = [pos.coords.latitude, pos.coords.longitude]
+        setUserLocation(coordsArr)
+        // Fetch nearest route from backend (if available)
+        try {
+          const res = await api.get('/api/routes/near-me', { params: { lat: coordsArr[0], lng: coordsArr[1] } })
+          const nearest = res.data.results?.[0]?.route || null
+          setNearestRoute(nearest)
+        } catch (err) {
+          setNearestRoute(null)
+        }
+      },
       ()    => setLocError('تعذّر تحديد موقعك — تأكد من صلاحيات الموقع')
     )
   }
@@ -201,16 +217,52 @@ export default function MapPage() {
             )
           })}
 
+          {/* Nearest route (dashed) — highlight when no explicit selected route or to emphasize nearest */}
+          {nearestRoute && (!route || route.routeId !== nearestRoute.routeId) && nearestPolylineCoords.length > 0 && (
+            <>
+              {nearestPolylineCoords.length >= 2 && (
+                <Polyline
+                  positions={nearestPolylineCoords}
+                  pathOptions={{ color: '#DC2626', weight: 3, dashArray: '8 6', opacity: 0.9 }}
+                />
+              )}
+              {nearestValidStations.map((s, i) => {
+                const isEndpoint = i === 0 || i === nearestValidStations.length - 1
+                return (
+                  <CircleMarker
+                    key={`near-${i}`}
+                    center={[s.coords.lat, s.coords.lng]}
+                    radius={isEndpoint ? 10 : 6}
+                    pathOptions={{
+                      fillColor:   '#FEE2E2',
+                      color:       '#DC2626',
+                      weight:      2,
+                      dashArray:   '6 4',
+                      fillOpacity: 0.9,
+                    }}
+                  >
+                    <Popup>
+                      <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl', textAlign: 'right', minWidth: 120 }}>
+                        <strong style={{ color: '#1B2A4A', display: 'block' }}>{s.nameAr}</strong>
+                        <span style={{ color: '#6B7280', fontSize: 12 }}>{s.nameEn}</span>
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                )
+              })}
+            </>
+          )}
+
           {/* User location marker */}
           {userLocation && (
             <CircleMarker
               center={userLocation}
               radius={10}
               pathOptions={{
-                fillColor:   '#2563EB',
-                color:       '#1D4ED8',
+                fillColor:   '#DC2626',
+                color:       '#991B1B',
                 weight:      2,
-                fillOpacity: 0.85,
+                fillOpacity: 0.95,
               }}
             >
               <Popup>

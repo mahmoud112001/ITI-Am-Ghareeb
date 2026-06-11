@@ -183,6 +183,11 @@ export default function RouteCard({
           <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
             {route.nameEn}
           </p>
+          {route.distanceMeters != null && (
+            <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
+              أقرب محطة على بعد {route.distanceMeters < 1000 ? `${Math.round(route.distanceMeters)} متر` : `${(route.distanceMeters / 1000).toFixed(1)} كم`} من موقعك
+            </p>
+          )}
         </div>
         <span
           className="text-xs font-bold px-3 py-1 rounded-full flex-shrink-0"

@@ -6,19 +6,21 @@ const routesService = require("../services/routes.service");
  */
 const search = async (req, res, next) => {
   try {
-    const { origin, destination } = req.query;
-    if (!origin || !destination) {
-      return next({
-        statusCode: 400,
-        message: "يرجى إدخال نقطة البداية والوجهة",
-      });
-    }
-
+    const { origin, destination, originLat, originLng } = req.query;
     const userId = req.user?.userId || null;
+    const originCoords =
+      originLat && originLng
+        ? {
+            lat: Number(originLat),
+            lng: Number(originLng),
+          }
+        : null;
+
     const results = await routesService.searchRoutes(
       origin,
       destination,
       userId,
+      originCoords,
     );
     res.status(200).json({ success: true, results });
   } catch (err) {
@@ -119,6 +121,32 @@ const clearSavedRoutes = async (req, res, next) => {
   }
 };
 
+/**
+ * getNearestRoutes — GET /api/routes/near-me (protected)
+ * Finds the 5 nearest routes from user's current location.
+ * Query params: lat, lng (user coordinates)
+ */
+const getNearestRoutes = async (req, res, next) => {
+  try {
+    const { lat, lng } = req.query;
+    const userCoords =
+      lat && lng
+        ? {
+            lat: Number(lat),
+            lng: Number(lng),
+          }
+        : null;
+
+    const results = await routesService.findNearestRoutes(
+      userCoords,
+      req.user.userId,
+    );
+    res.status(200).json({ success: true, results });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   search,
   getStations,
@@ -128,4 +156,5 @@ module.exports = {
   saveRoute,
   unsaveRoute,
   clearSavedRoutes,
+  getNearestRoutes,
 };
