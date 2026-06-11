@@ -47,7 +47,7 @@ const routes = [
         order: 4,
         nameAr: "سيدي بشر",
         nameEn: "Sidi Bishr",
-        coords: { lat: 31.256118, lng: 29.992268 },
+        coords: { lat: 31.2521, lng: 29.9945 },
       }, // Wikipedia Sidi_Bishr
       {
         order: 5,
@@ -226,19 +226,19 @@ const routes = [
         order: 5,
         nameAr: "محمد نجيب",
         nameEn: "Mohamed Naguib",
-        coords: { lat: 31.253202, lng: 29.986699 },
+        coords: { lat: 31.26, lng: 29.986 },
       }, // [interp] eastern corridor
       {
         order: 6,
-        nameAr: "سيدي بشر",
-        nameEn: "Sidi Bishr",
-        coords: { lat: 31.258824, lng: 29.988674 },
+        nameAr: "جمال عبد الناصر",
+        nameEn: "Gamal Abdel Nasser",
+        coords: { lat: 31.264, lng: 29.991 },
       }, // [interp] near Asafra axis
       {
         order: 7,
         nameAr: "سيدي بشر",
         nameEn: "Sidi Bishr",
-        coords: { lat: 31.256118, lng: 29.992268 },
+        coords: { lat: 31.2521, lng: 29.9945 },
       }, // Wikipedia Sidi_Bishr
       {
         order: 8,
@@ -250,19 +250,19 @@ const routes = [
         order: 9,
         nameAr: "الإصلاح",
         nameEn: "El Eslah",
-        coords: { lat: 31.284379, lng: 30.040121 },
+        coords: { lat: 31.292, lng: 30.028 },
       }, // [interp]
       {
         order: 10,
         nameAr: "طوسون",
         nameEn: "Tawson",
-        coords: { lat: 31.303004, lng: 30.06002 },
+        coords: { lat: 31.298, lng: 30.042 },
       }, // [interp]
       {
         order: 11,
         nameAr: "أبو قير",
         nameEn: "Abu Qir",
-        coords: { lat: 31.321895, lng: 30.064129 },
+        coords: { lat: 31.3101, lng: 30.0612 },
       }, // seed original
     ],
     fare: { min: 9.5, max: 11.0, currency: "EGP", lastVerified: "2026-03" },
@@ -328,19 +328,19 @@ const routes = [
         order: 6,
         nameAr: "محمد نجيب",
         nameEn: "Mohamed Naguib",
-        coords: { lat: 31.253202, lng: 29.986699 },
+        coords: { lat: 31.26, lng: 29.986 },
       }, // [interp]
       {
         order: 7,
-        nameAr: "سيدي بشر",
-        nameEn: "Sidi Bishr",
-        coords: { lat: 31.258824, lng: 29.988674 },
+        nameAr: "جمال عبد الناصر",
+        nameEn: "Gamal Abdel Nasser",
+        coords: { lat: 31.264, lng: 29.991 },
       }, // [interp]
       {
         order: 8,
         nameAr: "سيدي بشر",
         nameEn: "Sidi Bishr",
-        coords: { lat: 31.256118, lng: 29.992268 },
+        coords: { lat: 31.2521, lng: 29.9945 },
       }, // Wikipedia Sidi_Bishr
       {
         order: 9,
@@ -352,19 +352,19 @@ const routes = [
         order: 10,
         nameAr: "الإصلاح",
         nameEn: "El Eslah",
-        coords: { lat: 31.284379, lng: 30.040121 },
+        coords: { lat: 31.292, lng: 30.028 },
       }, // [interp]
       {
         order: 11,
         nameAr: "طوسون",
         nameEn: "Tawson",
-        coords: { lat: 31.303004, lng: 30.06002 },
+        coords: { lat: 31.298, lng: 30.042 },
       }, // [interp]
       {
         order: 12,
         nameAr: "أبو قير",
         nameEn: "Abu Qir",
-        coords: { lat: 31.321895, lng: 30.064129 },
+        coords: { lat: 31.3101, lng: 30.0612 },
       }, // seed original
     ],
     fare: { min: 11.0, max: 13.0, currency: "EGP", lastVerified: "2026-03" },
@@ -399,7 +399,7 @@ const routes = [
         order: 1,
         nameAr: "سيدي بشر",
         nameEn: "Sidi Bishr",
-        coords: { lat: 31.256118, lng: 29.992268 },
+        coords: { lat: 31.2521, lng: 29.9945 },
       }, // Wikipedia Sidi_Bishr
       {
         order: 2,
@@ -415,9 +415,9 @@ const routes = [
       }, // Asafra area — Wikidata Q4803317
       {
         order: 4,
-        nameAr: "سيدي بشر",
-        nameEn: "Sidi Bishr",
-        coords: { lat: 31.258824, lng: 29.988674 },
+        nameAr: "جمال عبد الناصر",
+        nameEn: "Gamal Abdel Nasser",
+        coords: { lat: 31.264, lng: 29.991 },
       }, // [interp]
       {
         order: 5,
@@ -435,7 +435,7 @@ const routes = [
         order: 7,
         nameAr: "أبو قير",
         nameEn: "Abu Qir",
-        coords: { lat: 31.321895, lng: 30.064129 },
+        coords: { lat: 31.3101, lng: 30.0612 },
       }, // seed original
     ],
     fare: { min: 7.0, max: 8.5, currency: "EGP", lastVerified: "2026-03" },
@@ -477,7 +477,7 @@ const routes = [
         order: 2,
         nameAr: "الإصلاح",
         nameEn: "El Eslah",
-        coords: { lat: 31.284379, lng: 30.040121 },
+        coords: { lat: 31.292, lng: 30.028 },
       }, // [interp]
       {
         order: 3,
@@ -554,7 +554,7 @@ const routes = [
         order: 3,
         nameAr: "محمد نجيب",
         nameEn: "Mohamed Naguib",
-        coords: { lat: 31.253202, lng: 29.986699 },
+        coords: { lat: 31.26, lng: 29.986 },
       }, // [interp]
       {
         order: 4,
@@ -566,7 +566,7 @@ const routes = [
         order: 5,
         nameAr: "الإصلاح",
         nameEn: "El Eslah",
-        coords: { lat: 31.284379, lng: 30.040121 },
+        coords: { lat: 31.292, lng: 30.028 },
       }, // [interp]
       {
         order: 6,
@@ -749,15 +749,15 @@ const routes = [
       }, // [interp] midpoint Dekheila→Sidi Kerir
       {
         order: 7,
-        nameAr: "محمد نجيب",
-        nameEn: "Mohamed Naguib",
-        coords: { lat: 31.003827, lng: 29.639678 },
+        nameAr: "سيدي كرير",
+        nameEn: "Sidi Kerir",
+        coords: { lat: 31.0967, lng: 29.6223 },
       }, // MagicPort port data
       {
         order: 8,
         nameAr: "البرج القديم",
         nameEn: "Old Borg",
-        coords: { lat: 30.964681, lng: 29.668432 },
+        coords: { lat: 30.9, lng: 29.63 },
       }, // [interp] near New Borg area
       {
         order: 9,
