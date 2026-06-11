@@ -5,6 +5,7 @@ import api from '../lib/axios'
 import RouteCard from '../components/RouteCard'
 import RatingModal from '../components/RatingModal'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
+import { useAuth } from '../context/AuthContext'
 
 // ── Skeleton placeholder ──────────────────────────────────────────────────────
 function SkeletonCard() {
@@ -131,15 +132,30 @@ function SwapIcon() {
   )
 }
 
+// ── History icon ─────────────────────────────────────────────────────────────
+function HistoryIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 .49-4.5" />
+      <polyline points="12 7 12 12 15 14" />
+    </svg>
+  )
+}
+
 // ── SearchPage ────────────────────────────────────────────────────────────────
 export default function SearchPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { user } = useAuth()
 
   const [origin, setOrigin]           = useState(searchParams.get('origin') || '')
   const [destination, setDestination] = useState(searchParams.get('destination') || '')
   const [searched, setSearched]       = useState(false)
   const [ratingRouteId, setRatingRouteId] = useState(null)
+  const [savedRouteIds, setSavedRouteIds] = useState([])
+  const [savingRouteId, setSavingRouteId] = useState(null)
+  const [justSavedRouteId, setJustSavedRouteId] = useState(null)
 
   // Stations for autocomplete
   const { data: stationsData } = useQuery({
@@ -148,6 +164,19 @@ export default function SearchPage() {
     staleTime: Infinity,
   })
   const stations = stationsData || []
+
+  const { data: savedRoutesData } = useQuery({
+    queryKey: ['saved-routes'],
+    queryFn:  () => api.get('/api/routes/saved').then((r) => r.data.routes),
+    enabled: !!user,
+    staleTime: 300000,
+  })
+
+  useEffect(() => {
+    if (savedRoutesData) {
+      setSavedRouteIds(savedRoutesData.map((route) => route.routeId))
+    }
+  }, [savedRoutesData])
 
   // Search query (disabled until user clicks search)
   const { data: results, isFetching, isSuccess } = useQuery({
@@ -167,6 +196,27 @@ export default function SearchPage() {
   function swap() {
     setOrigin(destination)
     setDestination(origin)
+  }
+
+  async function handleSaveRoute(routeId) {
+    if (!user) return
+
+    setSavingRouteId(routeId)
+    try {
+      if (savedRouteIds.includes(routeId)) {
+        await api.delete(`/api/routes/save/${routeId}`)
+        setSavedRouteIds((prev) => prev.filter((id) => id !== routeId))
+      } else {
+        await api.post(`/api/routes/save/${routeId}`)
+        setSavedRouteIds((prev) => Array.from(new Set([...prev, routeId])))
+        setJustSavedRouteId(routeId)
+        setTimeout(() => setJustSavedRouteId(null), 1000)
+      }
+    } catch (err) {
+      // ignore errors silently for now
+    } finally {
+      setTimeout(() => setSavingRouteId(null), 1000)
+    }
   }
 
   const noResults = isSuccess && results?.length === 0
@@ -221,6 +271,20 @@ export default function SearchPage() {
             >
               ابحث
             </button>
+            <button
+              onClick={() => user && navigate('/dashboard')}
+              disabled={!user}
+              className="rounded-xl px-5 py-3 text-sm font-bold transition-all flex-shrink-0 sm:w-auto w-full flex items-center justify-center gap-2"
+              style={{
+                backgroundColor: user ? '#DBEAFE' : '#E5E7EB',
+                color:           user ? '#1E40AF' : '#6B7280',
+                cursor:          user ? 'pointer' : 'not-allowed',
+              }}
+              title={user ? 'انتقل إلى سجل البحث' : 'سجل البحث متاح فقط بعد تسجيل الدخول'}
+            >
+              <HistoryIcon />
+              سجل البحث
+            </button>
           </div>
         </div>
       </div>
@@ -249,6 +313,11 @@ export default function SearchPage() {
                 route={route}
                 accuracyStats={accuracyStats}
                 onRateClick={(id) => setRatingRouteId(id)}
+                onSaveClick={handleSaveRoute}
+                onUnsaveClick={handleSaveRoute}
+                isSaved={savedRouteIds.includes(route.routeId)}
+                isSaving={savingRouteId === route.routeId}
+                isJustSaved={justSavedRouteId === route.routeId}
               />
             ))}
           </div>
