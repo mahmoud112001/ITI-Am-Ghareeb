@@ -7,7 +7,7 @@ import RatingModal from '../components/RatingModal'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
 import { useAuth } from '../context/AuthContext'
 
-// â”€â”€ Skeleton placeholder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Skeleton placeholder ──────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
     <div
@@ -28,7 +28,7 @@ function SkeletonCard() {
   )
 }
 
-// â”€â”€ Autocomplete input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Autocomplete input ────────────────────────────────────────────────────────
 function StationAutocomplete({ value, onChange, placeholder, stations }) {
   const [open, setOpen]           = useState(false)
   const [highlighted, setHighlighted] = useState(-1)
@@ -61,7 +61,6 @@ function StationAutocomplete({ value, onChange, placeholder, stations }) {
     }
   }
 
-  // Close on outside click
   useEffect(() => {
     function handler(e) {
       if (inputRef.current && !inputRef.current.closest('.autocomplete-wrap')?.contains(e.target)) {
@@ -119,7 +118,7 @@ function StationAutocomplete({ value, onChange, placeholder, stations }) {
   )
 }
 
-// â”€â”€ Swap icon â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Swap icon ─────────────────────────────────────────────────────────────────
 function SwapIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -131,7 +130,7 @@ function SwapIcon() {
   )
 }
 
-// â”€â”€ History icon â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── History icon ──────────────────────────────────────────────────────────────
 function HistoryIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -142,7 +141,7 @@ function HistoryIcon() {
   )
 }
 
-// â”€â”€ SearchPage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── SearchPage ────────────────────────────────────────────────────────────────
 export default function SearchPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -219,16 +218,16 @@ export default function SearchPage() {
 
   function useCurrentLocation() {
     if (!user) {
-      setLocationError('ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ø§Ù„Ù…ÙˆÙ‚Ø¹ Ø§Ù„Ø­Ø§Ù„ÙŠ')
+      setLocationError('يجب تسجيل الدخول لاستخدام الموقع الحالي')
       return
     }
 
     if (!navigator.geolocation) {
-      setLocationError('Ø§Ù„Ù…ØªØµÙØ­ Ù„Ø§ ÙŠØ¯Ø¹Ù… ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙˆÙ‚Ø¹')
+      setLocationError('المتصفح لا يدعم تحديد الموقع')
       return
     }
 
-    setLocationError('Ø¬Ø§Ø±Ù Ø§Ù„Ø­ØµÙˆÙ„ Ø¹Ù„Ù‰ Ø§Ù„Ù…ÙˆÙ‚Ø¹...')
+    setLocationError('جارٍ الحصول على الموقع...')
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const coords = {
@@ -240,7 +239,7 @@ export default function SearchPage() {
         setLocationError('')
       },
       (err) => {
-        setLocationError('ÙØ´Ù„ Ø§Ù„Ø­ØµÙˆÙ„ Ø¹Ù„Ù‰ Ø§Ù„Ù…ÙˆÙ‚Ø¹. ØªØ£ÙƒØ¯ Ù…Ù† Ø§Ù„Ø³Ù…Ø§Ø­ Ø¨Ø§Ù„ÙˆØµÙˆÙ„.')
+        setLocationError('فشل الحصول على الموقع. تأكد من السماح بالوصول.')
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     )
@@ -248,16 +247,16 @@ export default function SearchPage() {
 
   function handleNearbySearch() {
     if (!user) {
-      setLocationError('ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ù‡Ø°Ù‡ Ø§Ù„Ù…ÙŠØ²Ø©')
+      setLocationError('يجب تسجيل الدخول لاستخدام هذه الميزة')
       return
     }
 
     if (!navigator.geolocation) {
-      setLocationError('Ø§Ù„Ù…ØªØµÙØ­ Ù„Ø§ ÙŠØ¯Ø¹Ù… ØªØ­Ø¯ÙŠØ¯ Ø§Ù„Ù…ÙˆÙ‚Ø¹')
+      setLocationError('المتصفح لا يدعم تحديد الموقع')
       return
     }
 
-    setLocationError('Ø¬Ø§Ø±Ù Ø§Ù„Ø­ØµÙˆÙ„ Ø¹Ù„Ù‰ Ø§Ù„Ù…ÙˆÙ‚Ø¹...')
+    setLocationError('جارٍ الحصول على الموقع...')
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const coords = {
@@ -272,7 +271,7 @@ export default function SearchPage() {
         setLocationError('')
       },
       (err) => {
-        setLocationError('ÙØ´Ù„ Ø§Ù„Ø­ØµÙˆÙ„ Ø¹Ù„Ù‰ Ø§Ù„Ù…ÙˆÙ‚Ø¹. ØªØ£ÙƒØ¯ Ù…Ù† Ø§Ù„Ø³Ù…Ø§Ø­ Ø¨Ø§Ù„ÙˆØµÙˆÙ„.')
+        setLocationError('فشل الحصول على الموقع. تأكد من السماح بالوصول.')
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     )
@@ -308,7 +307,7 @@ export default function SearchPage() {
       style={{ backgroundColor: '#FDF6EC', fontFamily: 'Cairo, sans-serif' }}
       dir="rtl"
     >
-      {/* â”€â”€ Search bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Search bar ──────────────────────────────────────────────────────── */}
       <div
         className="sticky top-0 z-30 shadow-md"
         style={{ backgroundColor: '#1B2A4A' }}
@@ -321,7 +320,7 @@ export default function SearchPage() {
                 setOrigin(value)
                 if (originCoords) setOriginCoords(null)
               }}
-              placeholder="Ù…Ù† Ø£ÙŠÙ†ØŸ"
+              placeholder="من أين؟"
               stations={stations}
             />
 
@@ -330,7 +329,7 @@ export default function SearchPage() {
               onClick={swap}
               className="flex items-center justify-center rounded-xl p-3.5 transition-colors hover:opacity-80 flex-shrink-0"
               style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' }}
-              aria-label="ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„Ù†Ù‚Ø·ØªÙŠÙ†"
+              aria-label="تبديل النقطتين"
             >
               <SwapIcon />
             </button>
@@ -338,7 +337,7 @@ export default function SearchPage() {
             <StationAutocomplete
               value={destination}
               onChange={setDestination}
-              placeholder="Ø¥Ù„Ù‰ Ø£ÙŠÙ†ØŸ"
+              placeholder="إلى أين؟"
               stations={stations}
             />
 
@@ -353,7 +352,7 @@ export default function SearchPage() {
                 cursor:          ((!origin.trim() && !originCoords) || !destination.trim()) ? 'not-allowed' : 'pointer',
               }}
             >
-              Ø§Ø¨Ø­Ø«
+              ابحث
             </button>
             <button
               type="button"
@@ -365,9 +364,9 @@ export default function SearchPage() {
                 color:           user ? '#065F46' : '#6B7280',
                 cursor:          user ? 'pointer' : 'not-allowed',
               }}
-              title={user ? 'Ø§Ø³ØªØ®Ø¯Ù… Ù…ÙˆÙ‚Ø¹ÙŠ Ø§Ù„Ø­Ø§Ù„ÙŠ ÙƒÙ…Ø­Ø·Ø© Ø¨Ø¯Ø§ÙŠØ©' : 'ÙŠØªØ·Ù„Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„'}
+              title={user ? 'استخدم موقعي الحالي كمحطة بداية' : 'يتطلب تسجيل الدخول'}
             >
-              ðŸŒ Ù…ÙˆÙ‚Ø¹ÙŠ Ø§Ù„Ø­Ø§Ù„ÙŠ
+              📍 موقعي الحالي
             </button>
             <button
               onClick={() => user && navigate('/dashboard')}
@@ -378,10 +377,10 @@ export default function SearchPage() {
                 color:           user ? '#1E40AF' : '#6B7280',
                 cursor:          user ? 'pointer' : 'not-allowed',
               }}
-              title={user ? 'Ø§Ù†ØªÙ‚Ù„ Ø¥Ù„Ù‰ Ø³Ø¬Ù„ Ø§Ù„Ø¨Ø­Ø«' : 'Ø³Ø¬Ù„ Ø§Ù„Ø¨Ø­Ø« Ù…ØªØ§Ø­ ÙÙ‚Ø· Ø¨Ø¹Ø¯ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„'}
+              title={user ? 'انتقل إلى سجل البحث' : 'سجل البحث متاح فقط بعد تسجيل الدخول'}
             >
               <HistoryIcon />
-              Ø³Ø¬Ù„ Ø§Ù„Ø¨Ø­Ø«
+              سجل البحث
             </button>
             <button
               type="button"
@@ -393,9 +392,9 @@ export default function SearchPage() {
                 color:           user ? '#7F1D1D' : '#6B7280',
                 cursor:          user ? 'pointer' : 'not-allowed',
               }}
-              title={user ? 'Ø§Ø¨Ø­Ø« Ø¹Ù† Ø£Ù‚Ø±Ø¨ 5 Ø®Ø·ÙˆØ· Ù…Ù† Ù…ÙˆÙ‚Ø¹Ùƒ Ø§Ù„Ø­Ø§Ù„ÙŠ' : 'ÙŠØªØ·Ù„Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„'}
+              title={user ? 'ابحث عن أقرب 5 خطوط من موقعك الحالي' : 'يتطلب تسجيل الدخول'}
             >
-              ðŸ“ Ø§Ù„Ø®Ø·ÙˆØ· Ø§Ù„Ù‚Ø±ÙŠØ¨Ø©
+              🔍 الخطوط القريبة
             </button>
           </div>
           {locationError && (
@@ -405,13 +404,13 @@ export default function SearchPage() {
           )}
           {originCoords && !locationError && (
             <div className="mt-4 px-4 text-right text-base" style={{ color: '#D1FAE5' }}>
-              ÙŠØªÙ… Ø§Ù„Ø¨Ø­Ø« Ù…Ù† Ù…ÙˆÙ‚Ø¹ÙŠ Ø§Ù„Ø­Ø§Ù„ÙŠ
+              يتم البحث من موقعي الحالي
             </div>
           )}
         </div>
       </div>
 
-      {/* â”€â”€ Results area â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Results area ─────────────────────────────────────────────────────── */}
       <div className="max-w-3xl mx-auto px-4 pt-6">
 
         {/* Loading skeletons */}
@@ -427,7 +426,7 @@ export default function SearchPage() {
         {!isFetching && isSuccess && results?.length > 0 && (
           <div className="flex flex-col gap-4">
             <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-              {results.length} Ù†ØªÙŠØ¬Ø© Ù„Ù€ Â«{originCoords && !origin.trim() ? 'Ù…ÙˆÙ‚Ø¹ÙŠ Ø§Ù„Ø­Ø§Ù„ÙŠ' : origin} â† {destination}Â»
+              {results.length} نتيجة لـ «{originCoords && !origin.trim() ? 'موقعي الحالي' : origin} ← {destination}»
             </p>
             {results.map(({ route, accuracyStats }) => (
               <RouteCard
@@ -450,7 +449,7 @@ export default function SearchPage() {
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-                Ø£Ù‚Ø±Ø¨ {nearbyResults.length} Ø®Ø·ÙˆØ· Ù…Ù† Ù…ÙˆÙ‚Ø¹Ùƒ Ø§Ù„Ø­Ø§Ù„ÙŠ
+                أقرب {nearbyResults.length} خطوط من موقعك الحالي
               </p>
             </div>
             {nearbyResults.map(({ route, accuracyStats }) => (
@@ -477,17 +476,17 @@ export default function SearchPage() {
           >
             <AmGhareebAvatar size={64} className="mx-auto mb-4" />
             <p className="text-lg font-bold mb-1" style={{ color: '#1B2A4A' }}>
-              Ù…ÙÙŠØ´ Ù†ØªØ§ÙŠØ¬ Ù„Ù„Ù…Ø³Ø§Ø± Ø¯Ù‡
+              مفيش نتايج للمسار ده
             </p>
             <p className="text-sm mb-5" style={{ color: '#6B7280' }}>
-              Ø§Ø³Ø£Ù„ Ø¹Ù… ØºØ±ÙŠØ¨ Ù…Ø¨Ø§Ø´Ø±Ø©Ù‹ ÙˆÙ‡ÙŠØ³Ø§Ø¹Ø¯Ùƒ!
+              اسأل عم غريب مباشرةً وهيساعدك!
             </p>
             <button
               onClick={() => navigate(`/chat?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`)}
               className="px-6 py-2.5 rounded-xl text-sm font-bold transition-opacity hover:opacity-80"
               style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
             >
-              Ø§Ø³Ø£Ù„ Ø¹Ù… ØºØ±ÙŠØ¨!
+              اسأل عم غريب!
             </button>
           </div>
         )}
@@ -500,23 +499,23 @@ export default function SearchPage() {
           >
             <AmGhareebAvatar size={64} className="mx-auto mb-4" />
             <p className="text-lg font-bold mb-1" style={{ color: '#1B2A4A' }}>
-              Ù…ÙÙŠØ´ Ø®Ø·ÙˆØ· Ù‚Ø±ÙŠØ¨Ø© Ù…Ù†Ùƒ Ø¯Ù„ÙˆÙ‚ØªÙŠ
+              مفيش خطوط قريبة منك دلوقتي
             </p>
             <p className="text-sm mb-5" style={{ color: '#6B7280' }}>
-              Ø¬Ø±Ù‘Ø¨ Ù…ÙˆÙ‚Ø¹ Ø¢Ø®Ø± Ø£Ùˆ Ø§Ø¨Ø­Ø« Ø¨Ù†Ù‚Ø·Ø© Ø¨Ø¯Ø§ÙŠØ© ÙˆÙˆØ¬Ù‡Ø©
+              جرّب موقع آخر أو ابحث بنقطة بداية ووجهة
             </p>
           </div>
         )}
 
-        {/* Initial state â€” not yet searched */}
+        {/* Initial state — not yet searched */}
         {!searched && !nearbySearch && (
           <div className="text-center py-16">
             <AmGhareebAvatar size={80} className="mx-auto mb-4" />
             <p className="text-base font-semibold" style={{ color: '#1B2A4A' }}>
-              Ø§Ø®ØªØ§Ø± Ù†Ù‚Ø·Ø© Ø§Ù„Ø¨Ø¯Ø§ÙŠØ© ÙˆØ§Ù„ÙˆØ¬Ù‡Ø© ÙˆØ§Ø¨Ø­Ø«
+              اختار نقطة البداية والوجهة وابحث
             </p>
             <p className="text-sm mt-1" style={{ color: '#9CA3AF' }}>
-              Ø¨Ù†Ø¹Ø±Ø¶ Ù„Ùƒ ÙƒÙ„ Ø§Ù„Ø®Ø·ÙˆØ· Ø§Ù„Ù…ØªØ§Ø­Ø© Ù…Ø¹ ØªÙ‚ÙŠÙŠÙ…Ø§Øª Ø§Ù„Ø¯Ù‚Ø©
+              بنعرض لك كل الخطوط المتاحة مع تقييمات الدقة
             </p>
           </div>
         )}
@@ -533,5 +532,3 @@ export default function SearchPage() {
     </div>
   )
 }
-
-
