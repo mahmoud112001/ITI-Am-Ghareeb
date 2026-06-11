@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
 import RouteCard from '../components/RouteCard'
@@ -135,7 +135,10 @@ function SearchHistoryTab() {
 
 // ── Saved Routes tab ──────────────────────────────────────────────────────────
 function SavedRoutesTab() {
+  const queryClient = useQueryClient()
   const [ratingRouteId, setRatingRouteId] = useState(null)
+  const [clearConfirm, setClearConfirm] = useState(false)
+  const [clearingAll, setClearingAll] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['saved-routes'],
@@ -156,6 +159,22 @@ function SavedRoutesTab() {
     )
   }
 
+  async function handleUnsaveRoute(routeId) {
+    await api.delete(`/api/routes/save/${routeId}`)
+    queryClient.invalidateQueries({ queryKey: ['saved-routes'] })
+  }
+
+  async function handleClearSavedRoutes() {
+    setClearingAll(true)
+    try {
+      await api.delete('/api/routes/saved/clear')
+      queryClient.invalidateQueries({ queryKey: ['saved-routes'] })
+      setClearConfirm(false)
+    } finally {
+      setClearingAll(false)
+    }
+  }
+
   if (!data?.length) {
     return (
       <EmptyState
@@ -168,13 +187,49 @@ function SavedRoutesTab() {
 
   return (
     <div className="flex flex-col gap-4 pt-4">
+      <div className="flex flex-col items-end gap-2">
+        {!clearConfirm ? (
+          <button
+            onClick={() => setClearConfirm(true)}
+            className="rounded-xl px-4 py-2 text-sm font-bold transition-opacity hover:opacity-80"
+            style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
+          >
+            حذف كل الخطوط المحفوظة
+          </button>
+        ) : (
+          <div className="rounded-2xl border p-4 text-right" style={{ borderColor: '#FECACA', backgroundColor: '#FFF1F2' }}>
+            <p className="text-sm font-semibold mb-3" style={{ color: '#991B1B' }}>
+              هل أنت متأكد أنك تريد حذف كل الخطوط المحفوظة؟
+            </p>
+            <div className="flex gap-2 flex-wrap justify-end">
+              <button
+                onClick={handleClearSavedRoutes}
+                disabled={clearingAll}
+                className="rounded-xl px-4 py-2 text-sm font-bold transition-opacity hover:opacity-80 disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
+              >
+                {clearingAll ? 'جارٍ الحذف...' : 'نعم، احذف الكل'}
+              </button>
+              <button
+                onClick={() => setClearConfirm(false)}
+                className="rounded-xl px-4 py-2 text-sm font-bold transition-opacity hover:opacity-80"
+                style={{ backgroundColor: '#E5E7EB', color: '#374151' }}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
       {data.map((route) => (
         <RouteCard
           key={route._id || route.routeId}
           route={route}
           accuracyStats={route.accuracyStats}
           onRateClick={(id) => setRatingRouteId(id)}
-          compact
+          onUnsaveClick={handleUnsaveRoute}
+          isSaved
+          compact={false}
         />
       ))}
       {ratingRouteId && (
