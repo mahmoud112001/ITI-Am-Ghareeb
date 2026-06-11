@@ -1,4 +1,4 @@
-const routesService = require('../services/routes.service')
+const routesService = require("../services/routes.service");
 
 /**
  * search — GET /api/routes/search?origin=...&destination=...
@@ -6,18 +6,25 @@ const routesService = require('../services/routes.service')
  */
 const search = async (req, res, next) => {
   try {
-    const { origin, destination } = req.query
+    const { origin, destination } = req.query;
     if (!origin || !destination) {
-      return next({ statusCode: 400, message: 'يرجى إدخال نقطة البداية والوجهة' })
+      return next({
+        statusCode: 400,
+        message: "يرجى إدخال نقطة البداية والوجهة",
+      });
     }
 
-    const userId = req.user?.userId || null
-    const results = await routesService.searchRoutes(origin, destination, userId)
-    res.status(200).json({ success: true, results })
+    const userId = req.user?.userId || null;
+    const results = await routesService.searchRoutes(
+      origin,
+      destination,
+      userId,
+    );
+    res.status(200).json({ success: true, results });
   } catch (err) {
-    next(err)
+    next(err);
   }
-}
+};
 
 /**
  * getStations — GET /api/routes/stations
@@ -25,12 +32,12 @@ const search = async (req, res, next) => {
  */
 const getStations = async (req, res, next) => {
   try {
-    const stations = await routesService.getStations()
-    res.status(200).json({ success: true, stations })
+    const stations = await routesService.getStations();
+    res.status(200).json({ success: true, stations });
   } catch (err) {
-    next(err)
+    next(err);
   }
-}
+};
 
 /**
  * getHistory — GET /api/routes/history (protected)
@@ -38,12 +45,12 @@ const getStations = async (req, res, next) => {
  */
 const getHistory = async (req, res, next) => {
   try {
-    const history = await routesService.getHistory(req.user.userId)
-    res.status(200).json({ success: true, history })
+    const history = await routesService.getHistory(req.user.userId);
+    res.status(200).json({ success: true, history });
   } catch (err) {
-    next(err)
+    next(err);
   }
-}
+};
 
 /**
  * getSavedRoutes — GET /api/routes/saved (protected)
@@ -51,12 +58,12 @@ const getHistory = async (req, res, next) => {
  */
 const getSavedRoutes = async (req, res, next) => {
   try {
-    const routes = await routesService.getSavedRoutes(req.user.userId)
-    res.status(200).json({ success: true, routes })
+    const routes = await routesService.getSavedRoutes(req.user.userId);
+    res.status(200).json({ success: true, routes });
   } catch (err) {
-    next(err)
+    next(err);
   }
-}
+};
 
 /**
  * getRouteById — GET /api/routes/:routeId
@@ -64,36 +71,53 @@ const getSavedRoutes = async (req, res, next) => {
  */
 const getRouteById = async (req, res, next) => {
   try {
-    const { route, accuracyStats } = await routesService.getRouteById(req.params.routeId)
-    res.status(200).json({ success: true, route, accuracyStats })
+    const { route, accuracyStats } = await routesService.getRouteById(
+      req.params.routeId,
+    );
+    res.status(200).json({ success: true, route, accuracyStats });
   } catch (err) {
-    next(err)
+    next(err);
   }
-}
+};
 
 /**
  * saveRoute — POST /api/routes/save/:routeId (protected)
  */
 const saveRoute = async (req, res, next) => {
   try {
-    const result = await routesService.saveRoute(req.user.userId, req.params.routeId)
-    res.status(200).json({ success: true, ...result })
+    const result = await routesService.saveRoute(
+      req.user.userId,
+      req.params.routeId,
+    );
+    res.status(200).json({ success: true, ...result });
   } catch (err) {
-    next(err)
+    next(err);
   }
-}
+};
 
 /**
  * unsaveRoute — DELETE /api/routes/save/:routeId (protected)
  */
 const unsaveRoute = async (req, res, next) => {
   try {
-    const result = await routesService.unsaveRoute(req.user.userId, req.params.routeId)
-    res.status(200).json({ success: true, ...result })
+    const result = await routesService.unsaveRoute(
+      req.user.userId,
+      req.params.routeId,
+    );
+    res.status(200).json({ success: true, ...result });
   } catch (err) {
-    next(err)
+    next(err);
   }
-}
+};
+
+const clearSavedRoutes = async (req, res, next) => {
+  try {
+    const result = await routesService.clearSavedRoutes(req.user.userId);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+};
 
 module.exports = {
   search,
@@ -103,4 +127,5 @@ module.exports = {
   getRouteById,
   saveRoute,
   unsaveRoute,
-}
+  clearSavedRoutes,
+};
