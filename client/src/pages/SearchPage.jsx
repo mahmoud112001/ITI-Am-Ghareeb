@@ -6,6 +6,9 @@ import RouteCard from '../components/RouteCard'
 import RatingModal from '../components/RatingModal'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
 import { useAuth } from '../context/AuthContext'
+import ar from '../i18n/ar'
+
+const { search: t } = ar
 
 // ── Skeleton placeholder ──────────────────────────────────────────────────────
 function SkeletonCard() {
@@ -193,7 +196,7 @@ export default function SearchPage() {
     enabled: searched && (!!origin || !!originCoords) && !!destination,
   })
 
-  // Nearby search query (find 5 nearest routes from current location)
+  // Nearby search query
   const { data: nearbyResults, isFetching: isFetchingNearby, isSuccess: isSuccessNearby } = useQuery({
     queryKey: ['nearby-routes', originCoords],
     queryFn:  () => {
@@ -218,68 +221,51 @@ export default function SearchPage() {
 
   function useCurrentLocation() {
     if (!user) {
-      setLocationError('يجب تسجيل الدخول لاستخدام الموقع الحالي')
+      setLocationError(t.loginRequiredLocation)
       return
     }
-
     if (!navigator.geolocation) {
-      setLocationError('المتصفح لا يدعم تحديد الموقع')
+      setLocationError(t.geoNotSupported)
       return
     }
-
-    setLocationError('جارٍ الحصول على الموقع...')
+    setLocationError(t.geoFetching)
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const coords = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        }
-        setOriginCoords(coords)
+        setOriginCoords({ lat: position.coords.latitude, lng: position.coords.longitude })
         setOrigin('')
         setLocationError('')
       },
-      (err) => {
-        setLocationError('فشل الحصول على الموقع. تأكد من السماح بالوصول.')
-      },
+      () => setLocationError(t.geoFailed),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     )
   }
 
   function handleNearbySearch() {
     if (!user) {
-      setLocationError('يجب تسجيل الدخول لاستخدام هذه الميزة')
+      setLocationError(t.loginRequiredNearby)
       return
     }
-
     if (!navigator.geolocation) {
-      setLocationError('المتصفح لا يدعم تحديد الموقع')
+      setLocationError(t.geoNotSupported)
       return
     }
-
-    setLocationError('جارٍ الحصول على الموقع...')
+    setLocationError(t.geoFetching)
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const coords = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        }
-        setOriginCoords(coords)
+        setOriginCoords({ lat: position.coords.latitude, lng: position.coords.longitude })
         setOrigin('')
         setDestination('')
         setSearched(false)
         setNearbySearch(true)
         setLocationError('')
       },
-      (err) => {
-        setLocationError('فشل الحصول على الموقع. تأكد من السماح بالوصول.')
-      },
+      () => setLocationError(t.geoFailed),
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     )
   }
 
   async function handleSaveRoute(routeId) {
     if (!user) return
-
     setSavingRouteId(routeId)
     try {
       if (savedRouteIds.includes(routeId)) {
@@ -291,15 +277,17 @@ export default function SearchPage() {
         setJustSavedRouteId(routeId)
         setTimeout(() => setJustSavedRouteId(null), 1000)
       }
-    } catch (err) {
+    } catch {
       // ignore errors silently for now
     } finally {
       setTimeout(() => setSavingRouteId(null), 1000)
     }
   }
 
-  const noResults = isSuccess && results?.length === 0
+  const noResults       = isSuccess      && results?.length      === 0
   const noNearbyResults = isSuccessNearby && nearbyResults?.length === 0
+
+  const originLabel = originCoords && !origin.trim() ? t.myLocationLabel : origin
 
   return (
     <div
@@ -320,7 +308,7 @@ export default function SearchPage() {
                 setOrigin(value)
                 if (originCoords) setOriginCoords(null)
               }}
-              placeholder="من أين؟"
+              placeholder={t.placeholderFrom}
               stations={stations}
             />
 
@@ -329,7 +317,7 @@ export default function SearchPage() {
               onClick={swap}
               className="flex items-center justify-center rounded-xl p-3.5 transition-colors hover:opacity-80 flex-shrink-0"
               style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' }}
-              aria-label="تبديل النقطتين"
+              aria-label={t.swapLabel}
             >
               <SwapIcon />
             </button>
@@ -337,7 +325,7 @@ export default function SearchPage() {
             <StationAutocomplete
               value={destination}
               onChange={setDestination}
-              placeholder="إلى أين؟"
+              placeholder={t.placeholderTo}
               stations={stations}
             />
 
@@ -352,7 +340,7 @@ export default function SearchPage() {
                 cursor:          ((!origin.trim() && !originCoords) || !destination.trim()) ? 'not-allowed' : 'pointer',
               }}
             >
-              ابحث
+              {t.searchBtn}
             </button>
             <button
               type="button"
@@ -364,9 +352,9 @@ export default function SearchPage() {
                 color:           user ? '#065F46' : '#6B7280',
                 cursor:          user ? 'pointer' : 'not-allowed',
               }}
-              title={user ? 'استخدم موقعي الحالي كمحطة بداية' : 'يتطلب تسجيل الدخول'}
+              title={user ? t.locationTitleBtn : t.loginTitleLocation}
             >
-              📍 موقعي الحالي
+              {t.myLocationBtn}
             </button>
             <button
               onClick={() => user && navigate('/dashboard')}
@@ -377,10 +365,10 @@ export default function SearchPage() {
                 color:           user ? '#1E40AF' : '#6B7280',
                 cursor:          user ? 'pointer' : 'not-allowed',
               }}
-              title={user ? 'انتقل إلى سجل البحث' : 'سجل البحث متاح فقط بعد تسجيل الدخول'}
+              title={user ? t.historyTitleBtn : t.historyLoginTitle}
             >
               <HistoryIcon />
-              سجل البحث
+              {t.historyBtn}
             </button>
             <button
               type="button"
@@ -392,9 +380,9 @@ export default function SearchPage() {
                 color:           user ? '#7F1D1D' : '#6B7280',
                 cursor:          user ? 'pointer' : 'not-allowed',
               }}
-              title={user ? 'ابحث عن أقرب 5 خطوط من موقعك الحالي' : 'يتطلب تسجيل الدخول'}
+              title={user ? t.nearbyTitleBtn : t.nearbyLoginTitle}
             >
-              🔍 الخطوط القريبة
+              {t.nearbyBtn}
             </button>
           </div>
           {locationError && (
@@ -404,7 +392,7 @@ export default function SearchPage() {
           )}
           {originCoords && !locationError && (
             <div className="mt-4 px-4 text-right text-base" style={{ color: '#D1FAE5' }}>
-              يتم البحث من موقعي الحالي
+              {t.searchingFromLocation}
             </div>
           )}
         </div>
@@ -426,7 +414,7 @@ export default function SearchPage() {
         {!isFetching && isSuccess && results?.length > 0 && (
           <div className="flex flex-col gap-4">
             <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-              {results.length} نتيجة لـ «{originCoords && !origin.trim() ? 'موقعي الحالي' : origin} ← {destination}»
+              {t.resultsCount(results.length, originLabel, destination)}
             </p>
             {results.map(({ route, accuracyStats }) => (
               <RouteCard
@@ -449,7 +437,7 @@ export default function SearchPage() {
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-                أقرب {nearbyResults.length} خطوط من موقعك الحالي
+                {t.nearbyCount(nearbyResults.length)}
               </p>
             </div>
             {nearbyResults.map(({ route, accuracyStats }) => (
@@ -476,17 +464,17 @@ export default function SearchPage() {
           >
             <AmGhareebAvatar size={64} className="mx-auto mb-4" />
             <p className="text-lg font-bold mb-1" style={{ color: '#1B2A4A' }}>
-              مفيش نتايج للمسار ده
+              {t.noResults}
             </p>
             <p className="text-sm mb-5" style={{ color: '#6B7280' }}>
-              اسأل عم غريب مباشرةً وهيساعدك!
+              {t.noResultsBody}
             </p>
             <button
               onClick={() => navigate(`/chat?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`)}
               className="px-6 py-2.5 rounded-xl text-sm font-bold transition-opacity hover:opacity-80"
               style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
             >
-              اسأل عم غريب!
+              {t.noResultsBtn}
             </button>
           </div>
         )}
@@ -499,10 +487,10 @@ export default function SearchPage() {
           >
             <AmGhareebAvatar size={64} className="mx-auto mb-4" />
             <p className="text-lg font-bold mb-1" style={{ color: '#1B2A4A' }}>
-              مفيش خطوط قريبة منك دلوقتي
+              {t.noNearby}
             </p>
             <p className="text-sm mb-5" style={{ color: '#6B7280' }}>
-              جرّب موقع آخر أو ابحث بنقطة بداية ووجهة
+              {t.noNearbyBody}
             </p>
           </div>
         )}
@@ -512,10 +500,10 @@ export default function SearchPage() {
           <div className="text-center py-16">
             <AmGhareebAvatar size={80} className="mx-auto mb-4" />
             <p className="text-base font-semibold" style={{ color: '#1B2A4A' }}>
-              اختار نقطة البداية والوجهة وابحث
+              {t.initialPrompt}
             </p>
             <p className="text-sm mt-1" style={{ color: '#9CA3AF' }}>
-              بنعرض لك كل الخطوط المتاحة مع تقييمات الدقة
+              {t.initialBody}
             </p>
           </div>
         )}

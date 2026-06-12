@@ -3,6 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
+import ar from '../i18n/ar'
+
+const { register: t, common } = ar
 
 function EyeIcon({ open }) {
   return open ? (
@@ -22,17 +25,17 @@ function EyeIcon({ open }) {
 // ── Validation helpers ────────────────────────────────────────────────────────
 function validateName(v) {
   if (!v) return ''
-  if (v.trim().length < 2) return 'الاسم يجب أن يكون حرفين على الأقل'
+  if (v.trim().length < 2) return t.validation.nameTooShort
   return ''
 }
 function validateEmail(v) {
   if (!v) return ''
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'بريد إلكتروني غير صحيح'
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return t.validation.invalidEmail
   return ''
 }
 function validatePassword(v) {
   if (!v) return ''
-  if (!/(?=.*[A-Z])(?=.*\d)/.test(v)) return 'كلمة المرور يجب أن تحتوي على حرف كبير ورقم'
+  if (!/(?=.*[A-Z])(?=.*\d)/.test(v)) return t.validation.weakPassword
   return ''
 }
 
@@ -57,7 +60,7 @@ export default function RegisterPage() {
     mutationFn: () => register(name.trim(), email.trim(), password),
     onSuccess:  () => navigate('/dashboard'),
     onError:    (err) => {
-      setApiError(err?.response?.data?.message || 'حدث خطأ، حاول مرة أخرى')
+      setApiError(err?.response?.data?.message || t.genericError)
     },
   })
 
@@ -69,7 +72,7 @@ export default function RegisterPage() {
   }
 
   function blur(field) {
-    setTouched((t) => ({ ...t, [field]: true }))
+    setTouched((prev) => ({ ...prev, [field]: true }))
   }
 
   return (
@@ -91,19 +94,19 @@ export default function RegisterPage() {
           className="text-center text-2xl font-bold mb-1"
           style={{ color: '#1B2A4A', fontFamily: 'Cairo, sans-serif' }}
         >
-          انضم لعم غريب
+          {t.heading}
         </h1>
         <h2
           className="text-center text-sm font-medium mb-7"
           style={{ color: '#F4A833', fontFamily: 'Cairo, sans-serif' }}
         >
-          سجّل وابدأ تسأل عن مواصلات الإسكندرية
+          {t.subheading}
         </h2>
 
         {/* Name */}
         <div className="mb-4">
           <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>
-            الاسم الكامل
+            {t.nameLabel}
           </label>
           <input
             type="text"
@@ -121,7 +124,7 @@ export default function RegisterPage() {
               blur('name')
               e.target.style.borderColor = touched.name && nameErr ? '#DC2626' : '#D1D5DB'
             }}
-            placeholder="أحمد علي"
+            placeholder={t.namePlaceholder}
             autoComplete="name"
           />
           {touched.name && nameErr && (
@@ -132,7 +135,7 @@ export default function RegisterPage() {
         {/* Email */}
         <div className="mb-4">
           <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>
-            البريد الإلكتروني
+            {t.emailLabel}
           </label>
           <input
             type="email"
@@ -162,7 +165,7 @@ export default function RegisterPage() {
         {/* Password */}
         <div className="mb-5">
           <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>
-            كلمة المرور
+            {t.passwordLabel}
           </label>
           <div className="relative">
             <input
@@ -219,10 +222,10 @@ export default function RegisterPage() {
           {mutation.isPending ? (
             <>
               <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              جاري إنشاء الحساب...
+              {common.creating}
             </>
           ) : (
-            'إنشاء الحساب'
+            t.submitBtn
           )}
         </button>
 
@@ -231,9 +234,9 @@ export default function RegisterPage() {
           className="text-center text-sm mt-6"
           style={{ color: '#6B7280', fontFamily: 'Cairo, sans-serif' }}
         >
-          عندك حساب؟{' '}
+          {t.hasAccount}{' '}
           <Link to="/login" className="font-bold hover:underline" style={{ color: '#F4A833' }}>
-            سجّل الدخول
+            {t.loginLink}
           </Link>
         </p>
       </div>

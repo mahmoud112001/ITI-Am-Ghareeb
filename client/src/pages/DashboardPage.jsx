@@ -6,6 +6,9 @@ import AmGhareebAvatar from '../components/AmGhareebAvatar'
 import RouteCard from '../components/RouteCard'
 import RatingModal from '../components/RatingModal'
 import api from '../lib/axios'
+import ar from '../i18n/ar'
+
+const { dashboard: t, common } = ar
 
 // ── Relative time ─────────────────────────────────────────────────────────────
 function relativeAr(dateStr) {
@@ -13,10 +16,10 @@ function relativeAr(dateStr) {
   const mins  = Math.floor(diff / 60000)
   const hours = Math.floor(diff / 3600000)
   const days  = Math.floor(diff / 86400000)
-  if (mins  < 60)  return `منذ ${mins} دقيقة`
-  if (hours < 24)  return `منذ ${hours} ساعة`
-  if (days  === 1) return 'أمس'
-  return `منذ ${days} أيام`
+  if (mins  < 60)  return common.minutesAgo(mins)
+  if (hours < 24)  return common.hoursAgo(hours)
+  if (days  === 1) return common.yesterday
+  return common.daysAgo(days)
 }
 
 // ── Tab button ────────────────────────────────────────────────────────────────
@@ -82,8 +85,8 @@ function SearchHistoryTab() {
   if (!data?.length) {
     return (
       <EmptyState
-        message="لسه معملتش أي بحث — ابدأ دلوقتي!"
-        actionLabel="ابحث عن خط"
+        message={t.emptyHistory}
+        actionLabel={t.emptyActionLabel}
         actionTo="/search"
       />
     )
@@ -94,9 +97,9 @@ function SearchHistoryTab() {
       <table className="w-full text-sm" style={{ fontFamily: 'Cairo, sans-serif' }}>
         <thead>
           <tr style={{ borderBottom: '2px solid #E5E7EB' }}>
-            <th className="text-right pb-3 font-bold" style={{ color: '#1B2A4A' }}>من</th>
-            <th className="text-right pb-3 font-bold" style={{ color: '#1B2A4A' }}>إلى</th>
-            <th className="text-right pb-3 font-bold hidden sm:table-cell" style={{ color: '#9CA3AF' }}>التاريخ</th>
+            <th className="text-right pb-3 font-bold" style={{ color: '#1B2A4A' }}>{t.historyFrom}</th>
+            <th className="text-right pb-3 font-bold" style={{ color: '#1B2A4A' }}>{t.historyTo}</th>
+            <th className="text-right pb-3 font-bold hidden sm:table-cell" style={{ color: '#9CA3AF' }}>{t.historyDate}</th>
             <th className="pb-3" />
           </tr>
         </thead>
@@ -122,7 +125,7 @@ function SearchHistoryTab() {
                   className="text-xs font-bold px-3 py-1 rounded-lg transition-opacity hover:opacity-70"
                   style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
                 >
-                  ابحث تاني
+                  {t.searchAgain}
                 </button>
               </td>
             </tr>
@@ -137,8 +140,8 @@ function SearchHistoryTab() {
 function SavedRoutesTab() {
   const queryClient = useQueryClient()
   const [ratingRouteId, setRatingRouteId] = useState(null)
-  const [clearConfirm, setClearConfirm] = useState(false)
-  const [clearingAll, setClearingAll] = useState(false)
+  const [clearConfirm, setClearConfirm]   = useState(false)
+  const [clearingAll, setClearingAll]     = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['saved-routes'],
@@ -178,8 +181,8 @@ function SavedRoutesTab() {
   if (!data?.length) {
     return (
       <EmptyState
-        message="مفيش خطوط محفوظة — ابحث وحفظ الخطوط المهمة ليك!"
-        actionLabel="ابحث عن خط"
+        message={t.emptySaved}
+        actionLabel={t.emptyActionLabel}
         actionTo="/search"
       />
     )
@@ -194,12 +197,12 @@ function SavedRoutesTab() {
             className="rounded-xl px-4 py-2 text-sm font-bold transition-opacity hover:opacity-80"
             style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
           >
-            حذف كل الخطوط المحفوظة
+            {t.clearAllBtn}
           </button>
         ) : (
           <div className="rounded-2xl border p-4 text-right" style={{ borderColor: '#FECACA', backgroundColor: '#FFF1F2' }}>
             <p className="text-sm font-semibold mb-3" style={{ color: '#991B1B' }}>
-              هل أنت متأكد أنك تريد حذف كل الخطوط المحفوظة؟
+              {t.clearConfirmMsg}
             </p>
             <div className="flex gap-2 flex-wrap justify-end">
               <button
@@ -208,14 +211,14 @@ function SavedRoutesTab() {
                 className="rounded-xl px-4 py-2 text-sm font-bold transition-opacity hover:opacity-80 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
               >
-                {clearingAll ? 'جارٍ الحذف...' : 'نعم، احذف الكل'}
+                {clearingAll ? t.clearingAll : t.clearConfirmYes}
               </button>
               <button
                 onClick={() => setClearConfirm(false)}
                 className="rounded-xl px-4 py-2 text-sm font-bold transition-opacity hover:opacity-80"
                 style={{ backgroundColor: '#E5E7EB', color: '#374151' }}
               >
-                إلغاء
+                {common.cancel}
               </button>
             </div>
           </div>
@@ -259,7 +262,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-4 mb-8">
           <AmGhareebAvatar size={56} />
           <h1 className="text-2xl font-black" style={{ color: '#1B2A4A' }}>
-            أهلاً يا {user?.name}! 👋
+            {t.greeting(user?.name)}
           </h1>
         </div>
 
@@ -270,10 +273,10 @@ export default function DashboardPage() {
         >
           <div className="flex border-b" style={{ borderColor: '#E5E7EB' }}>
             <Tab active={activeTab === 0} onClick={() => setActiveTab(0)}>
-              بحثاتي الأخيرة
+              {t.tabHistory}
             </Tab>
             <Tab active={activeTab === 1} onClick={() => setActiveTab(1)}>
-              خطوطي المحفوظة
+              {t.tabSaved}
             </Tab>
           </div>
 

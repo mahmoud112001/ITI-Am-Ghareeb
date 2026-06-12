@@ -8,6 +8,9 @@ import {
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import api from '../lib/axios'
+import ar from '../i18n/ar'
+
+const { map: t } = ar
 
 // ── Fix Leaflet default icon URLs (broken by Vite asset hashing) ──────────────
 delete L.Icon.Default.prototype._getIconUrl
@@ -62,23 +65,22 @@ export default function MapPage() {
   function handleLocate() {
     setLocError('')
     if (!navigator.geolocation) {
-      setLocError('المتصفح مش بيدعم تحديد الموقع')
+      setLocError(t.geoNotSupported)
       return
     }
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const coordsArr = [pos.coords.latitude, pos.coords.longitude]
         setUserLocation(coordsArr)
-        // Fetch nearest route from backend (if available)
         try {
           const res = await api.get('/api/routes/near-me', { params: { lat: coordsArr[0], lng: coordsArr[1] } })
           const nearest = res.data.results?.[0]?.route || null
           setNearestRoute(nearest)
-        } catch (err) {
+        } catch {
           setNearestRoute(null)
         }
       },
-      ()    => setLocError('تعذّر تحديد موقعك — تأكد من صلاحيات الموقع')
+      () => setLocError(t.geoFailed)
     )
   }
 
@@ -111,14 +113,14 @@ export default function MapPage() {
                 className="inline-block mt-2 text-xs font-bold px-2 py-0.5 rounded-full"
                 style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
               >
-                التعريفة: {route.fare?.min}–{route.fare?.max} جنيه
+                {t.fareRange(route.fare?.min, route.fare?.max)}
               </span>
             </div>
 
             {/* All stations — including zero-coord ones (shown greyed out) */}
             <div className="p-4">
               <p className="text-xs font-semibold mb-3" style={{ color: '#6B7280' }}>
-                المحطات ({route.stations.length})
+                {t.stationsCount(route.stations.length)}
               </p>
               <ol className="flex flex-col gap-2.5">
                 {route.stations.map((s, i) => {
@@ -149,7 +151,7 @@ export default function MapPage() {
                             className="inline-block text-xs px-1.5 py-0.5 rounded mt-0.5"
                             style={{ backgroundColor: '#F3F4F6', color: '#9CA3AF' }}
                           >
-                            إحداثيات غير محددة
+                            {t.noCoords}
                           </span>
                         )}
                       </div>
@@ -162,7 +164,7 @@ export default function MapPage() {
         ) : (
           <div className="p-6 text-center">
             <p className="text-sm" style={{ color: '#9CA3AF' }}>
-              اختار خط من البحث لتراه على الخريطة
+              {t.sidebarEmpty}
             </p>
           </div>
         )}
@@ -181,10 +183,8 @@ export default function MapPage() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {/* Auto-fit when route loads */}
           {polylineCoords.length >= 2 && <FitBounds coords={polylineCoords} />}
 
-          {/* Route polyline */}
           {polylineCoords.length >= 2 && (
             <Polyline
               positions={polylineCoords}
@@ -192,7 +192,6 @@ export default function MapPage() {
             />
           )}
 
-          {/* Station circle markers — only for validStations (lat !== 0 && lng !== 0) */}
           {route && validStations.map((s, i) => {
             const isEndpoint = i === 0 || i === validStations.length - 1
             return (
@@ -217,7 +216,6 @@ export default function MapPage() {
             )
           })}
 
-          {/* Nearest route (dashed) — highlight when no explicit selected route or to emphasize nearest */}
           {nearestRoute && (!route || route.routeId !== nearestRoute.routeId) && nearestPolylineCoords.length > 0 && (
             <>
               {nearestPolylineCoords.length >= 2 && (
@@ -253,7 +251,6 @@ export default function MapPage() {
             </>
           )}
 
-          {/* User location marker */}
           {userLocation && (
             <CircleMarker
               center={userLocation}
@@ -267,7 +264,7 @@ export default function MapPage() {
             >
               <Popup>
                 <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl' }}>
-                  موقعك الحالي 📍
+                  {t.myLocationPopup}
                 </div>
               </Popup>
             </CircleMarker>
@@ -285,17 +282,17 @@ export default function MapPage() {
               style={{ backgroundColor: '#FFFFFF', maxWidth: 280 }}
             >
               <p className="font-bold text-base mb-1" style={{ color: '#1B2A4A' }}>
-                ابحث عن خط وشوفه على الخريطة
+                {t.noRouteTitle}
               </p>
               <p className="text-sm mb-4" style={{ color: '#9CA3AF' }}>
-                اختار مسارك من صفحة البحث
+                {t.noRouteBody}
               </p>
               <button
                 onClick={() => navigate('/search')}
                 className="px-5 py-2 rounded-xl text-sm font-bold"
                 style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
               >
-                ابحث دلوقتي
+                {t.noRouteBtn}
               </button>
             </div>
           </div>
@@ -314,13 +311,13 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* Floating user location button — bottom-left (visual left in RTL) */}
+        {/* Floating user location button */}
         <button
           onClick={handleLocate}
           className="absolute bottom-6 left-4 z-40 rounded-xl px-4 py-2.5 text-sm font-bold shadow-lg flex items-center gap-2 transition-opacity hover:opacity-90"
           style={{ backgroundColor: '#1B2A4A', color: 'white', fontFamily: 'Cairo, sans-serif' }}
         >
-          📍 موقعي الحالي
+          {t.myLocationBtn}
         </button>
 
         {/* Location error toast */}

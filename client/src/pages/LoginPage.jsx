@@ -3,6 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
+import ar from '../i18n/ar'
+
+const { login: t, common } = ar
 
 // ── Eye icon for show/hide password ──────────────────────────────────────────
 function EyeIcon({ open }) {
@@ -36,23 +39,23 @@ export default function LoginPage() {
   const { login, loginWithGoogle } = useAuth()
   const navigate = useNavigate()
 
-  const [email, setEmail]           = useState('')
-  const [password, setPassword]     = useState('')
+  const [email, setEmail]               = useState('')
+  const [password, setPassword]         = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [apiError, setApiError]     = useState('')
+  const [apiError, setApiError]         = useState('')
 
   const mutation = useMutation({
     mutationFn: () => login(email, password),
     onSuccess:  () => navigate('/dashboard'),
     onError:    (err) => {
-      setApiError(err?.response?.data?.message || 'حدث خطأ، حاول مرة أخرى')
+      setApiError(err?.response?.data?.message || t.genericError)
     },
   })
 
   function handleSubmit() {
     setApiError('')
     if (!email || !password) {
-      setApiError('يرجى ملء جميع الحقول')
+      setApiError(t.fillAllFields)
       return
     }
     mutation.mutate()
@@ -78,19 +81,19 @@ export default function LoginPage() {
           className="text-center text-2xl font-bold mb-1"
           style={{ color: '#1B2A4A', fontFamily: 'Cairo, sans-serif' }}
         >
-          أهلاً بيك في عم غريب
+          {t.heading}
         </h1>
         <h2
           className="text-center text-sm font-medium mb-7"
           style={{ color: '#F4A833', fontFamily: 'Cairo, sans-serif' }}
         >
-          سجّل دخولك عشان تقدر تسأل عم غريب
+          {t.subheading}
         </h2>
 
         {/* Email */}
         <div className="mb-4">
           <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>
-            البريد الإلكتروني
+            {t.emailLabel}
           </label>
           <input
             type="email"
@@ -114,7 +117,7 @@ export default function LoginPage() {
         {/* Password */}
         <div className="mb-5">
           <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>
-            كلمة المرور
+            {t.passwordLabel}
           </label>
           <div className="relative">
             <input
@@ -134,7 +137,7 @@ export default function LoginPage() {
               onClick={() => setShowPassword((v) => !v)}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
               tabIndex={-1}
-              aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+              aria-label={showPassword ? t.hidePassword : t.showPassword}
             >
               <EyeIcon open={showPassword} />
             </button>
@@ -162,17 +165,17 @@ export default function LoginPage() {
           {mutation.isPending ? (
             <>
               <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              جاري التسجيل...
+              {common.signingIn}
             </>
           ) : (
-            'تسجيل الدخول'
+            t.submitBtn
           )}
         </button>
 
         {/* Divider */}
         <div className="flex items-center gap-3 my-5">
           <div className="flex-1 h-px" style={{ backgroundColor: '#E5E7EB' }} />
-          <span className="text-sm text-gray-400 font-medium">أو</span>
+          <span className="text-sm text-gray-400 font-medium">{common.or}</span>
           <div className="flex-1 h-px" style={{ backgroundColor: '#E5E7EB' }} />
         </div>
 
@@ -188,7 +191,7 @@ export default function LoginPage() {
           }}
         >
           <GoogleIcon />
-          الدخول بحساب جوجل
+          {t.googleBtn}
         </button>
 
         {/* Register link */}
@@ -196,9 +199,9 @@ export default function LoginPage() {
           className="text-center text-sm mt-6"
           style={{ color: '#6B7280', fontFamily: 'Cairo, sans-serif' }}
         >
-          معندكش حساب؟{' '}
+          {t.noAccount}{' '}
           <Link to="/register" className="font-bold hover:underline" style={{ color: '#F4A833' }}>
-            سجّل دلوقتي
+            {t.registerLink}
           </Link>
         </p>
       </div>

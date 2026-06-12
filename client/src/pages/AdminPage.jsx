@@ -10,6 +10,9 @@ import {
   useUpdateRoute,
   useDeleteRoute,
 } from '../hooks/useAdminRoutes'
+import ar from '../i18n/ar'
+
+const { admin: t } = ar
 
 // ── Fix Leaflet default marker icon (Vite asset pipeline breaks it) ───────────
 delete L.Icon.Default.prototype._getIconUrl
@@ -20,12 +23,7 @@ L.Icon.Default.mergeOptions({
 })
 
 // ── Transport type config ─────────────────────────────────────────────────────
-const TYPE_OPTIONS = [
-  { value: 'microbus',           label: 'مشروع'  },
-  { value: 'bus',                label: 'أتوبيس' },
-  { value: 'tram',               label: 'ترام'   },
-  { value: 'university_shuttle', label: 'شاتل'   },
-]
+const TYPE_OPTIONS = t.transportTypes
 const TYPE_BADGE = {
   microbus:           { bg: '#FEF3C7', color: '#92400E' },
   bus:                { bg: '#DBEAFE', color: '#1E40AF' },
@@ -56,7 +54,6 @@ async function reverseGeocode(lat, lng) {
       { headers: { 'Accept-Language': 'ar' } }
     )
     const data = await res.json()
-    // Prefer neighbourhood > suburb > road > city_district > county > display_name
     const a = data.address || {}
     const nameAr =
       a.neighbourhood ||
@@ -139,7 +136,7 @@ function MapClickHandler({ onPick }) {
   return null
 }
 
-// ── FlyTo controller (replaces MapUpdater, reacts to flyTo prop) ──────────────
+// ── FlyTo controller ──────────────────────────────────────────────────────────
 function FlyToController({ lat, lng }) {
   const map = useMap()
   useEffect(() => {
@@ -148,33 +145,23 @@ function FlyToController({ lat, lng }) {
   return null
 }
 
-// ── Map picker modal (with reverse geocoding + place search) ──────────────────
-function MapPickerModal({
-  initialLat,
-  initialLng,
-  stationLabel,
-  onConfirm,   // (lat, lng, nameAr) => void
-  onClose,
-}) {
+// ── Map picker modal ──────────────────────────────────────────────────────────
+function MapPickerModal({ initialLat, initialLng, stationLabel, onConfirm, onClose }) {
+  const mp = t.mapPicker
   const startLat = initialLat && initialLat !== '' ? Number(initialLat) : ALEX_CENTER[0]
   const startLng = initialLng && initialLng !== '' ? Number(initialLng) : ALEX_CENTER[1]
 
-  const [picked,        setPicked]        = useState({ lat: startLat, lng: startLng })
-  const [resolvedName,  setResolvedName]  = useState('')   // Arabic name from reverse geocode
-  const [isGeocoding,   setIsGeocoding]   = useState(false)
-
-  // ── Search state ──────────────────────────────────────────────────────────
-  const [searchQuery,   setSearchQuery]   = useState('')
-  const [suggestions,   setSuggestions]   = useState([])
-  const [isSearching,   setIsSearching]   = useState(false)
+  const [picked,          setPicked]          = useState({ lat: startLat, lng: startLng })
+  const [resolvedName,    setResolvedName]    = useState('')
+  const [isGeocoding,     setIsGeocoding]     = useState(false)
+  const [searchQuery,     setSearchQuery]     = useState('')
+  const [suggestions,     setSuggestions]     = useState([])
+  const [isSearching,     setIsSearching]     = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const searchTimeout   = useRef(null)
-  const searchRef       = useRef(null)
+  const [flyTo,           setFlyTo]           = useState(null)
+  const searchTimeout = useRef(null)
+  const searchRef     = useRef(null)
 
-  // ── Fly-to trigger (only changes when user picks from suggestions) ────────
-  const [flyTo, setFlyTo] = useState(null)
-
-  // ── Reverse geocode whenever picked coords change ─────────────────────────
   useEffect(() => {
     setIsGeocoding(true)
     setResolvedName('')
@@ -184,7 +171,6 @@ function MapPickerModal({
     })
   }, [picked.lat, picked.lng])
 
-  // ── Debounced place search ────────────────────────────────────────────────
   function handleSearchInput(value) {
     setSearchQuery(value)
     clearTimeout(searchTimeout.current)
@@ -212,24 +198,21 @@ function MapPickerModal({
     setShowSuggestions(false)
   }
 
-  // ── GPS ───────────────────────────────────────────────────────────────────
   function getCurrentLocation() {
-    if (!navigator.geolocation) { alert('المتصفح لا يدعم تحديد الموقع'); return }
+    if (!navigator.geolocation) { alert(mp.geoNotSupported); return }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords
         setPicked({ lat, lng })
         setFlyTo({ lat, lng })
       },
-      () => alert('تعذر الحصول على الموقع الحالي'),
+      () => alert(mp.geoFailed),
       { enableHighAccuracy: true, timeout: 10000 }
     )
   }
 
-  // ── Map click/drag handler ────────────────────────────────────────────────
   function handleMapPick(lat, lng) {
     setPicked({ lat, lng })
-    // Don't trigger FlyToController for manual clicks — map is already there
   }
 
   return (
@@ -245,7 +228,7 @@ function MapPickerModal({
         {/* Header */}
         <div className="flex justify-between items-center px-5 py-4" style={{ borderBottom: '1px solid #E5E7EB' }}>
           <div>
-            <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>اختر الموقع من الخريطة</h3>
+            <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>{mp.title}</h3>
             <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{stationLabel}</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -255,14 +238,13 @@ function MapPickerModal({
           </button>
         </div>
 
-        {/* ── Search box ── */}
+        {/* Search box */}
         <div
           className="px-5 py-3"
           style={{ borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB', position: 'relative' }}
           ref={searchRef}
         >
           <div className="relative">
-            {/* Search icon */}
             <span className="absolute top-1/2 -translate-y-1/2 right-3 text-gray-400 pointer-events-none">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -273,7 +255,7 @@ function MapPickerModal({
               value={searchQuery}
               onChange={(e) => handleSearchInput(e.target.value)}
               onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-              placeholder="ابحث عن مكان… (مثال: محطة مصر، الإسكندرية)"
+              placeholder={mp.searchPlaceholder}
               className="w-full rounded-lg border px-3 py-2 pr-9 text-sm outline-none"
               style={{ borderColor: '#D1D5DB', fontFamily: 'Cairo, sans-serif' }}
               onFocus={(e) => { e.target.style.borderColor = '#F4A833'; suggestions.length > 0 && setShowSuggestions(true) }}
@@ -286,7 +268,6 @@ function MapPickerModal({
             )}
           </div>
 
-          {/* Suggestions dropdown */}
           {showSuggestions && suggestions.length > 0 && (
             <div
               className="absolute left-5 right-5 rounded-xl shadow-lg overflow-hidden z-10 mt-1"
@@ -323,7 +304,7 @@ function MapPickerModal({
             className="rounded-lg px-4 py-1.5 text-sm font-semibold hover:opacity-80"
             style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }}
           >
-            📍 استخدام موقعي الحالي
+            {mp.gpsBtn}
           </button>
         </div>
 
@@ -354,20 +335,18 @@ function MapPickerModal({
           className="px-5 py-3 flex flex-col gap-1"
           style={{ backgroundColor: '#F9FAFB', borderTop: '1px solid #E5E7EB' }}
         >
-          {/* Arabic name from reverse geocode */}
           <div className="flex items-center gap-2 min-h-5">
             {isGeocoding ? (
-              <span className="text-xs" style={{ color: '#9CA3AF' }}>جاري التعرف على المكان…</span>
+              <span className="text-xs" style={{ color: '#9CA3AF' }}>{mp.geocoding}</span>
             ) : resolvedName ? (
               <>
                 <span className="text-xs font-bold" style={{ color: '#1B2A4A' }}>🏷 {resolvedName}</span>
-                <span className="text-xs" style={{ color: '#9CA3AF' }}>سيُستخدم اسمًا للمحطة</span>
+                <span className="text-xs" style={{ color: '#9CA3AF' }}>{mp.nameWillBeUsed}</span>
               </>
             ) : null}
           </div>
-          {/* Raw coords */}
           <span className="text-xs font-mono" style={{ color: '#9CA3AF' }}>
-            {picked.lat.toFixed(6)}, {picked.lng.toFixed(6)} — انقر أو اسحب العلامة لتحديد الموقع
+            {picked.lat.toFixed(6)}, {picked.lng.toFixed(6)} — {mp.coordsHint}
           </span>
         </div>
 
@@ -378,21 +357,15 @@ function MapPickerModal({
             className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2"
             style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
           >
-            إلغاء
+            {mp.cancelBtn}
           </button>
           <button
-            onClick={() =>
-              onConfirm(
-                picked.lat.toFixed(6),
-                picked.lng.toFixed(6),
-                resolvedName   // ← Arabic name passed back
-              )
-            }
+            onClick={() => onConfirm(picked.lat.toFixed(6), picked.lng.toFixed(6), resolvedName)}
             disabled={isGeocoding}
             className="flex-1 rounded-xl py-2.5 text-sm font-bold hover:opacity-80 disabled:opacity-50"
             style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
           >
-            {isGeocoding ? 'جاري التعرف…' : 'تأكيد الموقع'}
+            {isGeocoding ? mp.confirmingBtn : mp.confirmBtn}
           </button>
         </div>
       </div>
@@ -402,37 +375,36 @@ function MapPickerModal({
 
 // ── Route form modal (add & edit) ─────────────────────────────────────────────
 function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
+  const f = t.form
   const [form, setForm]           = useState(initial || EMPTY_FORM)
   const [err,  setErr]            = useState('')
-  const [mapPicker, setMapPicker] = useState(null) // { stationIndex, label }
+  const [mapPicker, setMapPicker] = useState(null)
 
-  function set(key, val) { setForm((f) => ({ ...f, [key]: val })) }
+  function set(key, val) { setForm((prev) => ({ ...prev, [key]: val })) }
 
   function setStation(index, key, val) {
-    setForm((f) => {
-      const stations = f.stations.map((s, i) => i === index ? { ...s, [key]: val } : s)
-      return { ...f, stations }
+    setForm((prev) => {
+      const stations = prev.stations.map((s, i) => i === index ? { ...s, [key]: val } : s)
+      return { ...prev, stations }
     })
   }
 
   function addStation() {
-    setForm((f) => ({ ...f, stations: [...f.stations, EMPTY_STATION()] }))
+    setForm((prev) => ({ ...prev, stations: [...prev.stations, EMPTY_STATION()] }))
   }
 
   function removeStation(index) {
-    setForm((f) => {
-      if (f.stations.length <= 2) return f
-      return { ...f, stations: f.stations.filter((_, i) => i !== index) }
+    setForm((prev) => {
+      if (prev.stations.length <= 2) return prev
+      return { ...prev, stations: prev.stations.filter((_, i) => i !== index) }
     })
   }
 
   function openMapPicker(index, label) { setMapPicker({ index, label }) }
 
-  // ── Updated: now receives nameAr from reverse geocode ─────────────────────
   function handleMapConfirm(lat, lng, resolvedNameAr) {
     setStation(mapPicker.index, 'lat', lat)
     setStation(mapPicker.index, 'lng', lng)
-    // Only auto-fill nameAr if it's currently empty (don't overwrite user input)
     if (resolvedNameAr && !form.stations[mapPicker.index]?.nameAr) {
       setStation(mapPicker.index, 'nameAr', resolvedNameAr)
     }
@@ -440,9 +412,9 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
   }
 
   function handleSave() {
-    if (!form.routeId || !form.nameAr || !form.nameEn) { setErr('يرجى ملء معرف الخط والاسمين'); return }
-    if (!form.fareMin || !form.fareMax)                 { setErr('يرجى إدخال التعريفة');         return }
-    if (form.stations.some((s) => !s.nameAr || !s.nameEn)) { setErr('يرجى ملء أسماء جميع المحطات'); return }
+    if (!form.routeId || !form.nameAr || !form.nameEn) { setErr(f.errFillNames);    return }
+    if (!form.fareMin || !form.fareMax)                 { setErr(f.errFillFare);     return }
+    if (form.stations.some((s) => !s.nameAr || !s.nameEn)) { setErr(f.errFillStations); return }
 
     setErr('')
 
@@ -453,8 +425,8 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
       coords: { lat: s.lat !== '' ? Number(s.lat) : 0, lng: s.lng !== '' ? Number(s.lng) : 0 },
     }))
 
-    const origin      = { nameAr: stations[0].nameAr,                     nameEn: stations[0].nameEn,                     coords: stations[0].coords }
-    const destination = { nameAr: stations[stations.length - 1].nameAr,   nameEn: stations[stations.length - 1].nameEn,   coords: stations[stations.length - 1].coords }
+    const origin      = { nameAr: stations[0].nameAr,                   nameEn: stations[0].nameEn,                   coords: stations[0].coords }
+    const destination = { nameAr: stations[stations.length - 1].nameAr, nameEn: stations[stations.length - 1].nameEn, coords: stations[stations.length - 1].coords }
 
     onSave({
       routeId:        form.routeId,
@@ -491,13 +463,13 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
           </div>
 
           <div className="flex flex-col gap-3">
-            <SectionLabel>معلومات الخط</SectionLabel>
-            <Field label="معرف الخط *"          value={form.routeId} onChange={(v) => set('routeId', v)} placeholder="ALEX-MICRO-01" />
-            <Field label="اسم الخط بالعربي *"    value={form.nameAr}  onChange={(v) => set('nameAr',  v)} placeholder="محطة مصر ← سيدي بشر" />
-            <Field label="اسم الخط بالإنجليزي *" value={form.nameEn}  onChange={(v) => set('nameEn',  v)} placeholder="Misr Station → Sidi Bishr" />
+            <SectionLabel>{f.sectionInfo}</SectionLabel>
+            <Field label={f.routeIdLabel}  value={form.routeId} onChange={(v) => set('routeId', v)} placeholder={f.routeIdPlaceholder} />
+            <Field label={f.nameArLabel}   value={form.nameAr}  onChange={(v) => set('nameAr',  v)} placeholder={f.nameArPlaceholder} />
+            <Field label={f.nameEnLabel}   value={form.nameEn}  onChange={(v) => set('nameEn',  v)} placeholder={f.nameEnPlaceholder} />
 
             <div>
-              <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>النوع</label>
+              <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>{f.typeLabel}</label>
               <select
                 value={form.type}
                 onChange={(e) => set('type', e.target.value)}
@@ -508,22 +480,22 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
               </select>
             </div>
 
-            <SectionLabel>التعريفة والمواعيد</SectionLabel>
+            <SectionLabel>{f.sectionFare}</SectionLabel>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="أدنى تعريفة *" value={form.fareMin}    onChange={(v) => set('fareMin',    v)} type="number" placeholder="8" />
-              <Field label="أقصى تعريفة *" value={form.fareMax}    onChange={(v) => set('fareMax',    v)} type="number" placeholder="12" />
+              <Field label={f.fareMinLabel}    value={form.fareMin}    onChange={(v) => set('fareMin',    v)} type="number" placeholder="8" />
+              <Field label={f.fareMaxLabel}    value={form.fareMax}    onChange={(v) => set('fareMax',    v)} type="number" placeholder="12" />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="بداية التشغيل" value={form.hoursStart} onChange={(v) => set('hoursStart', v)} placeholder="6:00" />
-              <Field label="نهاية التشغيل" value={form.hoursEnd}   onChange={(v) => set('hoursEnd',   v)} placeholder="23:00" />
+              <Field label={f.hoursStartLabel} value={form.hoursStart} onChange={(v) => set('hoursStart', v)} placeholder="6:00" />
+              <Field label={f.hoursEndLabel}   value={form.hoursEnd}   onChange={(v) => set('hoursEnd',   v)} placeholder="23:00" />
             </div>
 
-            <SectionLabel>المحطات — الأولى هي الانطلاق، الأخيرة هي الوصول</SectionLabel>
+            <SectionLabel>{f.sectionStations}</SectionLabel>
 
             {form.stations.map((station, i) => {
-              const isFirst     = i === 0
-              const isLast      = i === form.stations.length - 1
-              const stationLabel = isFirst ? '🟢 نقطة الانطلاق' : isLast ? '🔴 نقطة الوصول' : `محطة ${i + 1}`
+              const isFirst      = i === 0
+              const isLast       = i === form.stations.length - 1
+              const stationLabel = isFirst ? f.stationStart : isLast ? f.stationEnd : f.stationN(i + 1)
               const borderColor  = isFirst ? '#D1FAE5' : isLast ? '#FEE2E2' : '#E5E7EB'
               const hasCoords    = station.lat !== '' && station.lng !== ''
 
@@ -532,16 +504,18 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-bold" style={{ color: '#374151' }}>{stationLabel}</span>
                     {!isFirst && !isLast && form.stations.length > 2 && (
-                      <button onClick={() => removeStation(i)} className="text-xs font-semibold" style={{ color: '#DC2626' }}>حذف</button>
+                      <button onClick={() => removeStation(i)} className="text-xs font-semibold" style={{ color: '#DC2626' }}>
+                        {f.removeStation}
+                      </button>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <Field label="بالعربي *"    value={station.nameAr} onChange={(v) => setStation(i, 'nameAr', v)} placeholder="محطة مصر" />
-                    <Field label="بالإنجليزي *" value={station.nameEn} onChange={(v) => setStation(i, 'nameEn', v)} placeholder="Misr Station" />
+                    <Field label={f.stationArLabel} value={station.nameAr} onChange={(v) => setStation(i, 'nameAr', v)} placeholder="محطة مصر" />
+                    <Field label={f.stationEnLabel} value={station.nameEn} onChange={(v) => setStation(i, 'nameEn', v)} placeholder="Misr Station" />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <Field label="خط العرض (Lat)" value={station.lat} onChange={(v) => setStation(i, 'lat', v)} type="number" placeholder="31.2001" />
-                    <Field label="خط الطول (Lng)" value={station.lng} onChange={(v) => setStation(i, 'lng', v)} type="number" placeholder="29.9187" />
+                    <Field label={f.latLabel} value={station.lat} onChange={(v) => setStation(i, 'lat', v)} type="number" placeholder="31.2001" />
+                    <Field label={f.lngLabel} value={station.lng} onChange={(v) => setStation(i, 'lng', v)} type="number" placeholder="29.9187" />
                   </div>
                   <button
                     onClick={() => openMapPicker(i, stationLabel)}
@@ -551,7 +525,7 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z" /><circle cx="12" cy="10" r="3" />
                     </svg>
-                    {hasCoords ? `📍 ${Number(station.lat).toFixed(4)}, ${Number(station.lng).toFixed(4)}` : 'اختر من الخريطة'}
+                    {hasCoords ? `📍 ${Number(station.lat).toFixed(4)}, ${Number(station.lng).toFixed(4)}` : f.pickFromMap}
                   </button>
                 </div>
               )
@@ -562,16 +536,18 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
               className="w-full rounded-xl py-2 text-sm font-semibold border-2 border-dashed hover:opacity-70"
               style={{ borderColor: '#F4A833', color: '#F4A833' }}
             >
-              + إضافة محطة
+              {f.addStation}
             </button>
           </div>
 
           {err && <p className="text-sm text-center mt-3" style={{ color: '#DC2626' }}>{err}</p>}
 
           <div className="flex gap-3 mt-6">
-            <button onClick={onClose} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>إلغاء</button>
+            <button onClick={onClose} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>
+              {f.cancelBtn}
+            </button>
             <button onClick={handleSave} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-bold hover:opacity-80 disabled:opacity-50" style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}>
-              {isPending ? 'جاري الحفظ...' : 'حفظ'}
+              {isPending ? f.savingBtn : f.saveBtn}
             </button>
           </div>
         </div>
@@ -592,6 +568,7 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
 
 // ── Delete confirmation dialog ────────────────────────────────────────────────
 function DeleteDialog({ routeName, onConfirm, onCancel, isPending }) {
+  const d = t.deleteDialog
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
@@ -604,12 +581,14 @@ function DeleteDialog({ routeName, onConfirm, onCancel, isPending }) {
         dir="rtl"
       >
         <div className="text-4xl mb-3">⚠️</div>
-        <h3 className="text-lg font-bold mb-2" style={{ color: '#1B2A4A' }}>هل متأكد إنك عايز تحذف الخط ده؟</h3>
+        <h3 className="text-lg font-bold mb-2" style={{ color: '#1B2A4A' }}>{d.title}</h3>
         <p className="text-sm mb-6" style={{ color: '#6B7280' }}>{routeName}</p>
         <div className="flex gap-3">
-          <button onClick={onCancel} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>إلغاء</button>
+          <button onClick={onCancel} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>
+            {d.cancel}
+          </button>
           <button onClick={onConfirm} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-bold disabled:opacity-50" style={{ backgroundColor: '#DC2626', color: 'white' }}>
-            {isPending ? 'جاري الحذف...' : 'نعم، احذف'}
+            {isPending ? d.deleting : d.confirm}
           </button>
         </div>
       </div>
@@ -663,31 +642,33 @@ export default function AdminPage() {
   function handleDelete()     { deleteMutation.mutate(deleteRoute._id, { onSuccess: () => setDeleteRoute(null) }) }
   function handleRestore(id)  { restoreMutation.mutate({ id, body: { isActive: true } }) }
 
+  const tbl = t.table
+
   return (
     <div className="min-h-screen pb-16" style={{ backgroundColor: '#FDF6EC', fontFamily: 'Cairo, sans-serif' }} dir="rtl">
       <div className="max-w-5xl mx-auto px-4 pt-8">
 
         <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-          <h1 className="text-2xl font-black" style={{ color: '#1B2A4A' }}>لوحة التحكم</h1>
+          <h1 className="text-2xl font-black" style={{ color: '#1B2A4A' }}>{t.pageTitle}</h1>
           <button onClick={() => setAddOpen(true)} className="rounded-xl px-5 py-2.5 text-sm font-bold hover:opacity-80" style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}>
-            ＋ إضافة خط جديد
+            {t.addRouteBtn}
           </button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <StatCard icon="🚌" value={s.totalRoutes}  label="إجمالي الخطوط" />
-          <StatCard icon="👥" value={s.totalUsers}   label="إجمالي المستخدمين" />
-          <StatCard icon="⭐" value={s.totalRatings} label="إجمالي التقييمات" />
+          <StatCard icon="🚌" value={s.totalRoutes}  label={t.stats.totalRoutes} />
+          <StatCard icon="👥" value={s.totalUsers}   label={t.stats.totalUsers} />
+          <StatCard icon="⭐" value={s.totalRatings} label={t.stats.totalRatings} />
           <StatCard
             icon="🔍"
             value={s.topSearched?.[0] ? `${s.topSearched[0].origin} ← ${s.topSearched[0].destination}` : '—'}
-            label="أكثر مسار مطلوب"
+            label={t.stats.topSearched}
           />
         </div>
 
         <div className="rounded-2xl overflow-hidden shadow-sm" style={{ backgroundColor: '#FFFFFF' }}>
           <div className="p-5 border-b" style={{ borderColor: '#E5E7EB' }}>
-            <h2 className="text-base font-bold" style={{ color: '#1B2A4A' }}>إدارة الخطوط</h2>
+            <h2 className="text-base font-bold" style={{ color: '#1B2A4A' }}>{tbl.manageTitle}</h2>
           </div>
 
           {isLoading ? (
@@ -695,13 +676,13 @@ export default function AdminPage() {
               <div className="w-8 h-8 mx-auto rounded-full border-4 animate-spin" style={{ borderColor: '#F4A833', borderTopColor: 'transparent' }} />
             </div>
           ) : routePairs.length === 0 ? (
-            <p className="p-8 text-center text-sm" style={{ color: '#9CA3AF' }}>لا توجد خطوط حتى الآن</p>
+            <p className="p-8 text-center text-sm" style={{ color: '#9CA3AF' }}>{tbl.noRoutes}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ backgroundColor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
-                    {['#', 'معرف الخط', 'اسم الخط', 'النوع', 'التعريفة', 'الحالة', 'إجراءات'].map((h) => (
+                    {tbl.headers.map((h) => (
                       <th key={h} className="text-right px-4 py-3 text-xs font-bold" style={{ color: '#6B7280' }}>{h}</th>
                     ))}
                   </tr>
@@ -720,10 +701,12 @@ export default function AdminPage() {
                         <td className="px-4 py-3">
                           <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.color }}>{typeLabel}</span>
                         </td>
-                        <td className="px-4 py-3 text-xs" style={{ color: '#6B7280' }}>{route.fare?.min}–{route.fare?.max} جنيه</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: '#6B7280' }}>
+                          {route.fare?.min}–{route.fare?.max} {ar.common.currency}
+                        </td>
                         <td className="px-4 py-3">
                           <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: route.isActive ? '#D1FAE5' : '#FEE2E2', color: route.isActive ? '#065F46' : '#991B1B' }}>
-                            {route.isActive ? 'نشط' : 'محذوف'}
+                            {route.isActive ? tbl.statusActive : tbl.statusDeleted}
                           </span>
                         </td>
                         <td className="px-4 py-3">
@@ -732,7 +715,7 @@ export default function AdminPage() {
                               onClick={() => setEditRoute({ _id: route._id, form: buildEditForm(route) })}
                               className="p-1.5 rounded-lg hover:opacity-70"
                               style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
-                              title="تعديل"
+                              title={t.form.saveBtn}
                             >
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -744,7 +727,7 @@ export default function AdminPage() {
                                 onClick={() => setDeleteRoute(route)}
                                 className="p-1.5 rounded-lg hover:opacity-70"
                                 style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
-                                title="حذف"
+                                title={t.deleteDialog.confirm}
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                                   <polyline points="3 6 5 6 21 6" />
@@ -759,7 +742,7 @@ export default function AdminPage() {
                                 disabled={restoreMutation.isPending}
                                 className="p-1.5 rounded-lg hover:opacity-70 disabled:opacity-40"
                                 style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}
-                                title="استعادة"
+                                title={tbl.statusActive}
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                                   <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -779,16 +762,20 @@ export default function AdminPage() {
 
           {totalPages > 1 && (
             <div className="flex justify-center items-center gap-3 p-4" style={{ borderTop: '1px solid #E5E7EB' }}>
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:cursor-not-allowed" style={{ borderColor: '#E5E7EB', color: page === 1 ? '#D1D5DB' : '#1B2A4A' }}>السابق</button>
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:cursor-not-allowed" style={{ borderColor: '#E5E7EB', color: page === 1 ? '#D1D5DB' : '#1B2A4A' }}>
+                {tbl.prevPage}
+              </button>
               <span className="text-sm" style={{ color: '#6B7280' }}>{page} / {totalPages}</span>
-              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:cursor-not-allowed" style={{ borderColor: '#E5E7EB', color: page === totalPages ? '#D1D5DB' : '#1B2A4A' }}>التالي</button>
+              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:cursor-not-allowed" style={{ borderColor: '#E5E7EB', color: page === totalPages ? '#D1D5DB' : '#1B2A4A' }}>
+                {tbl.nextPage}
+              </button>
             </div>
           )}
         </div>
       </div>
 
-      {addOpen    && <RouteFormModal title="إضافة خط جديد" onClose={() => setAddOpen(false)} onSave={handleCreate} isPending={createMutation.isPending} />}
-      {editRoute  && <RouteFormModal title="تعديل الخط" initial={editRoute.form} onClose={() => setEditRoute(null)} onSave={handleUpdate} isPending={updateMutation.isPending} />}
+      {addOpen     && <RouteFormModal title={t.form.addTitle}  onClose={() => setAddOpen(false)}   onSave={handleCreate} isPending={createMutation.isPending} />}
+      {editRoute   && <RouteFormModal title={t.form.editTitle} initial={editRoute.form} onClose={() => setEditRoute(null)} onSave={handleUpdate} isPending={updateMutation.isPending} />}
       {deleteRoute && <DeleteDialog routeName={deleteRoute.nameAr} onCancel={() => setDeleteRoute(null)} onConfirm={handleDelete} isPending={deleteMutation.isPending} />}
     </div>
   )

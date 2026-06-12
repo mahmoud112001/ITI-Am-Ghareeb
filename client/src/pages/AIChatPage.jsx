@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import api from '../lib/axios'
 import { useAIChat } from '../hooks/useAIChat'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
+import ar from '../i18n/ar'
+
+const { chat: t, common } = ar
 
 // ── Station autocomplete (compact, inline) ────────────────────────────────────
 function StationAutocomplete({ value, onChange, placeholder, stations }) {
@@ -111,10 +114,10 @@ function relativeAr(ts) {
   const diff  = Date.now() - ts
   const mins  = Math.floor(diff / 60000)
   const hours = Math.floor(diff / 3600000)
-  if (diff < 30000)  return 'الآن'
-  if (mins  < 60)    return `منذ ${mins} دقيقة`
-  if (hours < 24)    return `منذ ${hours} ساعة`
-  return 'من قبل'
+  if (diff < 30000)  return common.now
+  if (mins  < 60)    return common.minutesAgo(mins)
+  if (hours < 24)    return common.hoursAgo(hours)
+  return common.daysAgo(1)
 }
 
 // ── Send icon ─────────────────────────────────────────────────────────────────
@@ -186,28 +189,28 @@ export default function AIChatPage() {
         }}
       >
         <span className="text-xs font-semibold flex-shrink-0" style={{ color: '#F4A833' }}>
-          المسار:
+          {t.routeLabel}
         </span>
         <StationAutocomplete
           value={origin}
           onChange={setOrigin}
-          placeholder="من أين؟"
+          placeholder={t.placeholderFrom}
           stations={stations}
         />
         <span className="text-white/50 flex-shrink-0 text-sm">←</span>
         <StationAutocomplete
           value={destination}
           onChange={setDestination}
-          placeholder="إلى أين؟"
+          placeholder={t.placeholderTo}
           stations={stations}
         />
         <button
           onClick={clearMessages}
           className="flex-shrink-0 text-xs px-2 py-1 rounded-lg transition-opacity hover:opacity-70"
           style={{ color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.2)' }}
-          title="مسح المحادثة"
+          title={t.clearTitle}
         >
-          مسح
+          {t.clearBtn}
         </button>
       </div>
 
@@ -293,7 +296,7 @@ export default function AIChatPage() {
             className="rounded-xl px-4 py-3 text-sm font-medium text-center"
             style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
           >
-            حدث خطأ — حاول مرة تانية
+            {t.errorMsg}
           </div>
         )}
 
@@ -315,7 +318,7 @@ export default function AIChatPage() {
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={handleKey}
           disabled={isStreaming}
-          placeholder={isStreaming ? 'عم غريب بيكتب...' : 'اسأل عم غريب...'}
+          placeholder={isStreaming ? t.inputStreaming : t.inputIdle}
           className="flex-1 rounded-xl border-2 px-4 py-2.5 text-sm outline-none transition-all"
           style={{
             fontFamily:      'Cairo, sans-serif',
@@ -338,7 +341,7 @@ export default function AIChatPage() {
             opacity:         !inputText.trim() || isStreaming ? 0.45 : 1,
             cursor:          !inputText.trim() || isStreaming ? 'not-allowed' : 'pointer',
           }}
-          aria-label="إرسال"
+          aria-label={t.sendLabel}
         >
           <SendIcon />
         </button>
