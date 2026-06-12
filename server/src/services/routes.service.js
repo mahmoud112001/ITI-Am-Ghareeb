@@ -470,17 +470,27 @@ async function searchRoutesFromCurrentLocation(originCoords, destinationQuery) {
 }
 
 function buildLeg(routeDoc, selectedDirection, match, accuracyStats) {
-  const route = toPublicRoute(routeDoc, {
-    selectedDirection,
-    startIndex: match?.originIndex ?? 0,
-    endIndex: match?.destinationIndex,
-  });
+  const route = toPublicRoute(routeDoc, { selectedDirection });
+  const boardAt = route.mapPoints?.[match?.originIndex ?? 0] || route.origin;
+  const alightAt =
+    route.mapPoints?.[match?.destinationIndex ?? route.mapPoints.length - 1] ||
+    route.destination;
 
   return {
-    route,
+    route: {
+      ...route,
+      matchedSegment: match
+        ? {
+            originIndex: match.originIndex,
+            destinationIndex: match.destinationIndex,
+            originStopId: boardAt?._id ? String(boardAt._id) : null,
+            destinationStopId: alightAt?._id ? String(alightAt._id) : null,
+          }
+        : null,
+    },
     accuracyStats,
-    boardAt: route.origin,
-    alightAt: route.destination,
+    boardAt,
+    alightAt,
   };
 }
 

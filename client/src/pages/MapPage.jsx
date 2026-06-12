@@ -1,10 +1,7 @@
-import { useState, useEffect } from 'react'
+import { Fragment, useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import {
-  MapContainer, TileLayer, Marker, Popup,
-  Polyline, CircleMarker, useMap,
-} from 'react-leaflet'
+import { MapContainer, TileLayer, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import api from '../lib/axios'
@@ -28,12 +25,58 @@ function FitBounds({ coords }) {
   return null
 }
 
+function getPointMarkerStyle({ isEndpoint, isMatchedOrigin, isMatchedDestination }) {
+  if (isMatchedOrigin) {
+    return {
+      outerRadius: 18,
+      innerRadius: 10,
+      outerFill: '#FDE7BF',
+      outerStroke: '#F4A833',
+      innerFill: '#F4A833',
+      innerStroke: '#FFFFFF',
+    }
+  }
+
+  if (isMatchedDestination) {
+    return {
+      outerRadius: 18,
+      innerRadius: 10,
+      outerFill: '#DBEAFE',
+      outerStroke: '#1B2A4A',
+      innerFill: '#1B2A4A',
+      innerStroke: '#FFFFFF',
+    }
+  }
+
+  if (isEndpoint) {
+    return {
+      outerRadius: 14,
+      innerRadius: 8,
+      outerFill: '#EEF2FF',
+      outerStroke: '#1B2A4A',
+      innerFill: '#5B6B8C',
+      innerStroke: '#FFFFFF',
+    }
+  }
+
+  return {
+    outerRadius: 10,
+    innerRadius: 5,
+    outerFill: '#FFFFFF',
+    outerStroke: '#94A3B8',
+    innerFill: '#64748B',
+    innerStroke: '#FFFFFF',
+  }
+}
+
 // ── MapPage ───────────────────────────────────────────────────────────────────
 export default function MapPage() {
   const [searchParams] = useSearchParams()
   const navigate       = useNavigate()
   const routeId        = searchParams.get('routeId')
   const direction      = searchParams.get('direction') || 'forward'
+  const matchedOriginId = searchParams.get('matchedOriginId')
+  const matchedDestinationId = searchParams.get('matchedDestinationId')
 
   const [userLocation, setUserLocation] = useState(null)
   const [locError, setLocError]         = useState('')
@@ -47,11 +90,11 @@ export default function MapPage() {
   })
 
   const route = data?.route || null
+  const routePoints = route?.mapPoints || []
+  const visibleStations = route?.stations || []
 
   // Stations with real GPS coordinates (filter zero-coord placeholders)
-  const validStations = route
-    ? (route.stations || []).filter((s) => s.coords?.lat !== 0 && s.coords?.lng !== 0)
-    : []
+  const validStations = visibleStations.filter((s) => s.coords?.lat !== 0 && s.coords?.lng !== 0)
 
   // Polyline positions
   const polylineCoords = (route?.mapPoints || [])
@@ -123,20 +166,24 @@ export default function MapPage() {
             {/* All stations — including zero-coord ones (shown greyed out) */}
             <div className="p-4">
               <p className="text-xs font-semibold mb-3" style={{ color: '#6B7280' }}>
-                المحطات ({route.stations.length})
+                المحطات الظاهرة ({visibleStations.length})
               </p>
               <ol className="flex flex-col gap-2.5">
-                {route.stations.map((s, i) => {
+                {visibleStations.map((s, i) => {
                   const hasCoords = s.coords?.lat !== 0 && s.coords?.lng !== 0
+                  const stationId = s?._id ? String(s._id) : null
                   const isFirst   = i === 0
-                  const isLast    = i === route.stations.length - 1
+                  const isLast    = i === visibleStations.length - 1
+                  const isMatchedOrigin = matchedOriginId && stationId === matchedOriginId
+                  const isMatchedDestination = matchedDestinationId && stationId === matchedDestinationId
+                  const isMatched = isMatchedOrigin || isMatchedDestination
                   return (
                     <li key={i} className="flex items-start gap-2">
                       <span
                         className="text-xs font-bold mt-0.5 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center"
                         style={{
-                          backgroundColor: isFirst ? '#F4A833' : isLast ? '#1B2A4A' : '#E5E7EB',
-                          color:           isFirst || isLast ? 'white' : '#6B7280',
+                          backgroundColor: isMatchedOrigin ? '#F4A833' : isMatchedDestination ? '#1B2A4A' : isFirst ? '#FDE7BF' : isLast ? '#DBEAFE' : '#E5E7EB',
+                          color:           isMatched || isFirst || isLast ? '#1B2A4A' : '#6B7280',
                           fontSize:        10,
                         }}
                       >
@@ -145,10 +192,21 @@ export default function MapPage() {
                       <div className="min-w-0">
                         <p
                           className="text-sm font-medium leading-tight"
-                          style={{ color: hasCoords ? '#1B2A4A' : '#9CA3AF' }}
+                          style={{ color: hasCoords ? '#1B2A4A' : '#9CA3AF', fontWeight: isMatched ? 700 : 500 }}
                         >
                           {s.nameAr}
                         </p>
+                        {isMatched && (
+                          <span
+                            className="inline-block text-xs px-1.5 py-0.5 rounded mt-0.5 ml-1"
+                            style={{
+                              backgroundColor: isMatchedOrigin ? '#FEF3C7' : '#DBEAFE',
+                              color: isMatchedOrigin ? '#92400E' : '#1E3A8A',
+                            }}
+                          >
+                            {isMatchedOrigin ? 'من هنا' : 'إلى هنا'}
+                          </span>
+                        )}
                         {!hasCoords && (
                           <span
                             className="inline-block text-xs px-1.5 py-0.5 rounded mt-0.5"
@@ -199,26 +257,58 @@ export default function MapPage() {
 
           {/* Station circle markers — only for validStations (lat !== 0 && lng !== 0) */}
           {route && validStations.map((s, i) => {
+            const stationId = s?._id ? String(s._id) : null
             const isEndpoint = i === 0 || i === validStations.length - 1
+            const isMatchedOrigin = matchedOriginId && stationId === matchedOriginId
+            const isMatchedDestination = matchedDestinationId && stationId === matchedDestinationId
+            const isMatched = isMatchedOrigin || isMatchedDestination
+            const markerStyle = getPointMarkerStyle({
+              isEndpoint,
+              isMatchedOrigin,
+              isMatchedDestination,
+            })
             return (
-              <CircleMarker
-                key={i}
-                center={[s.coords.lat, s.coords.lng]}
-                radius={isEndpoint ? 12 : 8}
-                pathOptions={{
-                  fillColor:   '#F4A833',
-                  color:       '#1B2A4A',
-                  weight:      2,
-                  fillOpacity: 0.9,
-                }}
-              >
-                <Popup>
-                  <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl', textAlign: 'right', minWidth: 120 }}>
-                    <strong style={{ color: '#1B2A4A', display: 'block' }}>{s.nameAr}</strong>
-                    <span style={{ color: '#6B7280', fontSize: 12 }}>{s.nameEn}</span>
-                  </div>
-                </Popup>
-              </CircleMarker>
+              <Fragment key={i}>
+                <CircleMarker
+                  center={[s.coords.lat, s.coords.lng]}
+                  radius={markerStyle.outerRadius}
+                  pathOptions={{
+                    fillColor: markerStyle.outerFill,
+                    color: markerStyle.outerStroke,
+                    weight: isMatched ? 3 : 2,
+                    fillOpacity: isMatched ? 0.92 : 0.85,
+                    opacity: 1,
+                  }}
+                />
+                <CircleMarker
+                  center={[s.coords.lat, s.coords.lng]}
+                  radius={markerStyle.innerRadius}
+                  pathOptions={{
+                    fillColor: markerStyle.innerFill,
+                    color: markerStyle.innerStroke,
+                    weight: 2,
+                    fillOpacity: 1,
+                    opacity: 1,
+                  }}
+                >
+                  <Popup>
+                    <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl', textAlign: 'right', minWidth: 120 }}>
+                      <strong style={{ color: '#1B2A4A', display: 'block' }}>{s.nameAr}</strong>
+                      <span style={{ color: '#6B7280', fontSize: 12 }}>{s.nameEn}</span>
+                      {isMatched && (
+                        <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: isMatchedOrigin ? '#92400E' : '#1E3A8A' }}>
+                          {isMatchedOrigin ? 'نقطة الصعود المطلوبة' : 'نقطة النزول المطلوبة'}
+                        </div>
+                      )}
+                      {!isMatched && isEndpoint && (
+                        <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: '#475569' }}>
+                          {i === 0 ? 'بداية الخط' : 'نهاية الخط'}
+                        </div>
+                      )}
+                    </div>
+                  </Popup>
+                </CircleMarker>
+              </Fragment>
             )
           })}
 
