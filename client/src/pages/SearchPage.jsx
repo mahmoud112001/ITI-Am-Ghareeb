@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import api from '../lib/axios'
 import RouteCard from '../components/RouteCard'
+import TransferRouteCard from '../components/TransferRouteCard'
 import RatingModal from '../components/RatingModal'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
 import { useAuth } from '../context/AuthContext'
@@ -72,7 +73,7 @@ function StationAutocomplete({ value, onChange, placeholder, stations }) {
   }, [])
 
   return (
-    <div className="autocomplete-wrap relative flex-1">
+    <div className="autocomplete-wrap relative w-full sm:w-40 md:w-44 lg:w-48 xl:w-52 flex-shrink-0">
       <input
         ref={inputRef}
         type="text"
@@ -80,7 +81,7 @@ function StationAutocomplete({ value, onChange, placeholder, stations }) {
         onChange={(e) => { onChange(e.target.value); setOpen(true); setHighlighted(-1) }}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className="w-full rounded-xl border-2 px-5 py-5 text-lg outline-none transition-all"
+        className="w-full rounded-xl border-2 px-4 py-4 text-base outline-none transition-all"
         style={{
           fontFamily:      'Cairo, sans-serif',
           borderColor:     '#D1D5DB',
@@ -100,7 +101,7 @@ function StationAutocomplete({ value, onChange, placeholder, stations }) {
             <li
               key={s}
               onMouseDown={() => select(s)}
-              className="px-5 py-4 text-lg cursor-pointer transition-colors"
+              className="px-4 py-4 text-base cursor-pointer transition-colors"
               style={{
                 fontFamily:      'Cairo, sans-serif',
                 backgroundColor: i === highlighted ? '#FDF6EC' : '#FFFFFF',
@@ -313,7 +314,7 @@ export default function SearchPage() {
         style={{ backgroundColor: '#1B2A4A' }}
       >
         <div className="max-w-4xl mx-auto px-4 py-6">
-          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center sm:justify-center">
             <StationAutocomplete
               value={origin}
               onChange={(value) => {
@@ -428,19 +429,26 @@ export default function SearchPage() {
             <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
               {results.length} نتيجة لـ «{originCoords && !origin.trim() ? 'موقعي الحالي' : origin} ← {destination}»
             </p>
-            {results.map(({ route, accuracyStats }) => (
-              <RouteCard
-                key={route._id || route.routeId}
-                route={route}
-                accuracyStats={accuracyStats}
-                onRateClick={(id) => setRatingRouteId(id)}
-                onSaveClick={handleSaveRoute}
-                onUnsaveClick={handleSaveRoute}
-                isSaved={savedRouteIds.includes(route.routeId)}
-                isSaving={savingRouteId === route.routeId}
-                isJustSaved={justSavedRouteId === route.routeId}
-              />
-            ))}
+            {results.map((result) =>
+              result.itineraryType === 'transfer' ? (
+                <TransferRouteCard
+                  key={result.itineraryId}
+                  itinerary={result}
+                />
+              ) : (
+                <RouteCard
+                  key={result.route._id || result.route.routeId}
+                  route={result.route}
+                  accuracyStats={result.accuracyStats}
+                  onRateClick={(id) => setRatingRouteId(id)}
+                  onSaveClick={handleSaveRoute}
+                  onUnsaveClick={handleSaveRoute}
+                  isSaved={savedRouteIds.includes(result.route.routeId)}
+                  isSaving={savingRouteId === result.route.routeId}
+                  isJustSaved={justSavedRouteId === result.route.routeId}
+                />
+              ),
+            )}
           </div>
         )}
 

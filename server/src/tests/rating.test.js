@@ -3,6 +3,11 @@ const mongoose = require('mongoose')
 const request = require('supertest')
 const app = require('../../app')
 const { Route, Rating } = require('../models/index.js')
+const {
+  buildRoutePayloadFromLegacyRoute,
+  extractRouteFields,
+  syncRouteLocations,
+} = require('../utils/routeNetwork')
 
 let mongod
 let accessToken
@@ -28,7 +33,9 @@ const routeData = {
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create()
   await mongoose.connect(mongod.getUri())
-  testRoute = await Route.create(routeData)
+  const payload = buildRoutePayloadFromLegacyRoute({ ...routeData, direction: 'one_way' })
+  testRoute = new Route(extractRouteFields(payload))
+  await syncRouteLocations(testRoute, payload)
 
   const regRes = await request(app).post('/api/auth/register').send({
     name: 'مقيّم تجريبي',

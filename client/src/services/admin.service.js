@@ -23,7 +23,8 @@ export const getAdminRoutes = (page = 1, limit = 10) =>
 
 /**
  * POST /api/admin
- * Body: { routeId, nameAr, nameEn, type, fare: { min, max }, operatingHours: { start, end } }
+ * Body: { routeId, type, fare: { min, max }, operatingHours: { start, end }, stops[] }
+ * Route names are derived on the server from the first and last stop.
  */
 export const createRoute = (body) =>
   api.post('/api/admin', body).then((r) => r.data)

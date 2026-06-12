@@ -44,6 +44,7 @@ app.use('/api/routes', routesRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/ratings', ratingRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/admin/routes', adminRouter);
 
 // ── 404 Handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => {

@@ -109,7 +109,6 @@ export default function RegisterPage() {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onBlur={() => blur('name')}
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             className="w-full rounded-lg border px-4 py-2.5 text-sm outline-none transition-all"
             style={{

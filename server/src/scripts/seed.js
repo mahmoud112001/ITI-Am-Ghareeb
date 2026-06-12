@@ -1,6 +1,11 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 const { Route, User } = require("../models/index");
+const {
+  buildRoutePayloadFromLegacyRoute,
+  extractRouteFields,
+  syncRouteLocations,
+} = require("../utils/routeNetwork");
 
 // All coordinates sourced from Wikipedia, Wikidata, and verified geo databases.
 // Sources per station are noted inline where the value was looked up.
@@ -862,11 +867,22 @@ async function seed() {
 
     console.log("جاري حذف البيانات القديمة...");
     await Route.deleteMany({});
+    await mongoose.connection.collection("locations").deleteMany({});
     await User.deleteMany({ role: "admin" });
 
     console.log("جاري إضافة الخطوط...");
-    const result = await Route.insertMany(routes);
-    console.log(`تم إضافة ${result.length} خط بنجاح ✓`);
+    const routePayloads = routes.map((route) =>
+      buildRoutePayloadFromLegacyRoute(route),
+    );
+    const createdRoutes = [];
+
+    console.log("جاري إضافة الخطوط ومزامنة المواقع...");
+    for (const payload of routePayloads) {
+      const route = new Route(extractRouteFields(payload));
+      await syncRouteLocations(route, payload);
+      createdRoutes.push(route);
+    }
+    console.log(`تم إضافة ${createdRoutes.length} خط بنجاح ✓`);
 
     // Pre-save hook in User model automatically hashes the password
     await User.create({

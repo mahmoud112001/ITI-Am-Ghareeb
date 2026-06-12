@@ -5,6 +5,7 @@ const TYPE_CONFIG = {
   microbus:           { label: 'مشروع',  bg: '#FEF3C7', color: '#92400E' },
   bus:                { label: 'أتوبيس', bg: '#DBEAFE', color: '#1E40AF' },
   tram:               { label: 'ترام',   bg: '#D1FAE5', color: '#065F46' },
+  train:              { label: 'قطار',   bg: '#FCE7F3', color: '#9D174D' },
   university_shuttle: { label: 'شاتل',   bg: '#EDE9FE', color: '#5B21B6' },
 }
 
@@ -249,7 +250,7 @@ export default function RouteCard({
             </button>
           )}
           <button
-            onClick={() => navigate(`/map?routeId=${route.routeId}`)}
+            onClick={() => navigate(`/map?routeId=${route.routeId}&direction=${route.selectedDirection || 'forward'}`)}
             className="flex-1 rounded-xl py-2 text-sm font-semibold border-2 transition-colors hover:opacity-80"
             style={{ borderColor: '#1B2A4A', color: '#1B2A4A', backgroundColor: 'transparent' }}
           >

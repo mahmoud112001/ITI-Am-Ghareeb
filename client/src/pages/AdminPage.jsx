@@ -24,12 +24,14 @@ const TYPE_OPTIONS = [
   { value: 'microbus',           label: 'مشروع'  },
   { value: 'bus',                label: 'أتوبيس' },
   { value: 'tram',               label: 'ترام'   },
+  { value: 'train',              label: 'قطار'   },
   { value: 'university_shuttle', label: 'شاتل'   },
 ]
 const TYPE_BADGE = {
   microbus:           { bg: '#FEF3C7', color: '#92400E' },
   bus:                { bg: '#DBEAFE', color: '#1E40AF' },
   tram:               { bg: '#D1FAE5', color: '#065F46' },
+  train:              { bg: '#FCE7F3', color: '#9D174D' },
   university_shuttle: { bg: '#EDE9FE', color: '#5B21B6' },
 }
 
@@ -37,15 +39,38 @@ const TYPE_BADGE = {
 const ALEX_CENTER = [31.2001, 29.9187]
 
 // ── Empty station factory ─────────────────────────────────────────────────────
-const EMPTY_STATION = () => ({ nameAr: '', nameEn: '', lat: '', lng: '' })
+const EMPTY_STATION = () => ({
+  nameAr: '',
+  nameEn: '',
+  lat: '',
+  lng: '',
+  isSearchable: undefined,
+  allowPickup: true,
+  allowDropoff: true,
+})
 
 // ── Empty form ────────────────────────────────────────────────────────────────
 const EMPTY_FORM = {
-  routeId: '', nameAr: '', nameEn: '',
+  routeId: '',
   type: 'microbus',
+  isBidirectional: false,
   fareMin: '', fareMax: '',
   hoursStart: '', hoursEnd: '',
   stations: [EMPTY_STATION(), EMPTY_STATION()],
+}
+
+function getDefaultSearchableByPosition(index, total) {
+  return index === 0 || index === total - 1
+}
+
+function buildRoutePreviewNames(stations = []) {
+  if (!stations.length) return { nameAr: '', nameEn: '' }
+  const first = stations[0] || {}
+  const last = stations[stations.length - 1] || {}
+  return {
+    nameAr: first.nameAr && last.nameAr ? `${first.nameAr} → ${last.nameAr}` : '',
+    nameEn: first.nameEn && last.nameEn ? `${first.nameEn} → ${last.nameEn}` : '',
+  }
 }
 
 // ── Nominatim reverse geocode ─────────────────────────────────────────────────
@@ -272,7 +297,6 @@ function MapPickerModal({
               type="text"
               value={searchQuery}
               onChange={(e) => handleSearchInput(e.target.value)}
-              onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
               placeholder="ابحث عن مكان… (مثال: محطة مصر، الإسكندرية)"
               className="w-full rounded-lg border px-3 py-2 pr-9 text-sm outline-none"
               style={{ borderColor: '#D1D5DB', fontFamily: 'Cairo, sans-serif' }}
@@ -440,9 +464,13 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
   }
 
   function handleSave() {
-    if (!form.routeId || !form.nameAr || !form.nameEn) { setErr('يرجى ملء معرف الخط والاسمين'); return }
+    if (!form.routeId)                                     { setErr('يرجى ملء معرف الخط');         return }
     if (!form.fareMin || !form.fareMax)                 { setErr('يرجى إدخال التعريفة');         return }
     if (form.stations.some((s) => !s.nameAr || !s.nameEn)) { setErr('يرجى ملء أسماء جميع المحطات'); return }
+    if (form.stations.some((s) => s.allowPickup === false && s.allowDropoff === false)) {
+      setErr('كل نقطة لازم تسمح بالركوب أو النزول أو الاثنين')
+      return
+    }
 
     setErr('')
 
@@ -451,21 +479,20 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
       nameAr: s.nameAr,
       nameEn: s.nameEn,
       coords: { lat: s.lat !== '' ? Number(s.lat) : 0, lng: s.lng !== '' ? Number(s.lng) : 0 },
+      isSearchable: typeof s.isSearchable === 'boolean'
+        ? s.isSearchable
+        : getDefaultSearchableByPosition(i, form.stations.length),
+      allowPickup: s.allowPickup !== false,
+      allowDropoff: s.allowDropoff !== false,
     }))
-
-    const origin      = { nameAr: stations[0].nameAr,                     nameEn: stations[0].nameEn,                     coords: stations[0].coords }
-    const destination = { nameAr: stations[stations.length - 1].nameAr,   nameEn: stations[stations.length - 1].nameEn,   coords: stations[stations.length - 1].coords }
 
     onSave({
       routeId:        form.routeId,
-      nameAr:         form.nameAr,
-      nameEn:         form.nameEn,
       type:           form.type,
+      isBidirectional: form.isBidirectional === true,
       fare:           { min: Number(form.fareMin), max: Number(form.fareMax) },
       operatingHours: { start: form.hoursStart, end: form.hoursEnd },
-      origin,
-      destination,
-      stations,
+      stops:          stations,
     })
   }
 
@@ -493,8 +520,6 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
           <div className="flex flex-col gap-3">
             <SectionLabel>معلومات الخط</SectionLabel>
             <Field label="معرف الخط *"          value={form.routeId} onChange={(v) => set('routeId', v)} placeholder="ALEX-MICRO-01" />
-            <Field label="اسم الخط بالعربي *"    value={form.nameAr}  onChange={(v) => set('nameAr',  v)} placeholder="محطة مصر ← سيدي بشر" />
-            <Field label="اسم الخط بالإنجليزي *" value={form.nameEn}  onChange={(v) => set('nameEn',  v)} placeholder="Misr Station → Sidi Bishr" />
 
             <div>
               <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>النوع</label>
@@ -506,6 +531,25 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
               >
                 {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#1B2A4A' }}>
+              <input
+                type="checkbox"
+                checked={form.isBidirectional === true}
+                onChange={(e) => set('isBidirectional', e.target.checked)}
+              />
+              الخط يعمل في الاتجاهين
+            </label>
+
+            <div className="rounded-xl p-3" style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}>
+              <p className="text-xs font-bold mb-2" style={{ color: '#6B7280' }}>اسم الخط يتولد تلقائياً من أول وآخر نقطة</p>
+              <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>
+                {buildRoutePreviewNames(form.stations).nameAr || 'أدخل أول وآخر نقطة'}
+              </p>
+              <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                {buildRoutePreviewNames(form.stations).nameEn || 'Enter first and last stop'}
+              </p>
             </div>
 
             <SectionLabel>التعريفة والمواعيد</SectionLabel>
@@ -542,6 +586,34 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
                   <div className="grid grid-cols-2 gap-2">
                     <Field label="خط العرض (Lat)" value={station.lat} onChange={(v) => setStation(i, 'lat', v)} type="number" placeholder="31.2001" />
                     <Field label="خط الطول (Lng)" value={station.lng} onChange={(v) => setStation(i, 'lng', v)} type="number" placeholder="29.9187" />
+                  </div>
+                  <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
+                    <input
+                      type="checkbox"
+                      checked={typeof station.isSearchable === 'boolean'
+                        ? station.isSearchable
+                        : getDefaultSearchableByPosition(i, form.stations.length)}
+                      onChange={(e) => setStation(i, 'isSearchable', e.target.checked)}
+                    />
+                    تظهر في بحث الانطلاق والوصول
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
+                      <input
+                        type="checkbox"
+                        checked={station.allowPickup !== false}
+                        onChange={(e) => setStation(i, 'allowPickup', e.target.checked)}
+                      />
+                      يسمح بالركوب من هنا
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
+                      <input
+                        type="checkbox"
+                        checked={station.allowDropoff !== false}
+                        onChange={(e) => setStation(i, 'allowDropoff', e.target.checked)}
+                      />
+                      يسمح بالنزول هنا
+                    </label>
                   </div>
                   <button
                     onClick={() => openMapPicker(i, stationLabel)}
@@ -621,19 +693,21 @@ function DeleteDialog({ routeName, onConfirm, onCancel, isPending }) {
 function buildEditForm(route) {
   return {
     routeId:    route.routeId,
-    nameAr:     route.nameAr,
-    nameEn:     route.nameEn,
     type:       route.type,
+    isBidirectional: route.isBidirectional === true,
     fareMin:    route.fare?.min    ?? '',
     fareMax:    route.fare?.max    ?? '',
     hoursStart: route.operatingHours?.start ?? '',
     hoursEnd:   route.operatingHours?.end   ?? '',
-    stations:   route.stations?.length >= 2
-      ? route.stations.map((s) => ({
+    stations:   route.stops?.length >= 2
+      ? route.stops.map((s) => ({
           nameAr: s.nameAr,
           nameEn: s.nameEn,
           lat:    s.coords?.lat != null && s.coords.lat !== 0 ? String(s.coords.lat) : '',
           lng:    s.coords?.lng != null && s.coords.lng !== 0 ? String(s.coords.lng) : '',
+          isSearchable: s.isSearchable !== false,
+          allowPickup: s.allowPickup !== false,
+          allowDropoff: s.allowDropoff !== false,
         }))
       : [EMPTY_STATION(), EMPTY_STATION()],
   }
@@ -720,7 +794,9 @@ export default function AdminPage() {
                         <td className="px-4 py-3">
                           <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.color }}>{typeLabel}</span>
                         </td>
-                        <td className="px-4 py-3 text-xs" style={{ color: '#6B7280' }}>{route.fare?.min}–{route.fare?.max} جنيه</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: '#6B7280' }}>
+                          {route.fare?.min}–{route.fare?.max} جنيه
+                        </td>
                         <td className="px-4 py-3">
                           <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: route.isActive ? '#D1FAE5' : '#FEE2E2', color: route.isActive ? '#065F46' : '#991B1B' }}>
                             {route.isActive ? 'نشط' : 'محذوف'}

@@ -75,6 +75,7 @@ const getRouteById = async (req, res, next) => {
   try {
     const { route, accuracyStats } = await routesService.getRouteById(
       req.params.routeId,
+      req.query.direction,
     );
     res.status(200).json({ success: true, route, accuracyStats });
   } catch (err) {

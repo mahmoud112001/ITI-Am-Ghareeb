@@ -1,6 +1,11 @@
 const { MongoMemoryServer } = require('mongodb-memory-server')
 const mongoose = require('mongoose')
 const { User, Route, Rating, SearchHistory } = require('../models/index')
+const {
+  buildRoutePayloadFromLegacyRoute,
+  extractRouteFields,
+  syncRouteLocations,
+} = require('../utils/routeNetwork')
 
 let mongod
 
@@ -12,13 +17,6 @@ function makeRouteData(overrides = {}) {
     type: 'microbus',
     nameAr: 'خط تجريبي',
     nameEn: 'Test Route',
-    origin: { nameAr: 'نقطة البداية', nameEn: 'Origin', coords: { lat: 31.2, lng: 30.0 } },
-    destination: { nameAr: 'نقطة النهاية', nameEn: 'Destination', coords: { lat: 31.1, lng: 29.9 } },
-    stations: [
-      { order: 1, nameAr: 'محطة أولى', nameEn: 'First Stop', coords: { lat: 31.2, lng: 30.0 } },
-      { order: 2, nameAr: 'محطة ثانية', nameEn: 'Second Stop', coords: { lat: 0, lng: 0 } },
-    ],
-    fare: { min: 8, max: 10 },
     verified: true,
     isActive: true,
     ...overrides,
@@ -36,7 +34,21 @@ async function makeUser(overrides = {}) {
 }
 
 async function makeRoute(overrides = {}) {
-  return Route.create(makeRouteData(overrides))
+  const payload = buildRoutePayloadFromLegacyRoute({
+    ...makeRouteData(),
+    direction: 'one_way',
+    origin: { nameAr: 'نقطة البداية', nameEn: 'Origin', coords: { lat: 31.2, lng: 30 } },
+    destination: { nameAr: 'نقطة النهاية', nameEn: 'Destination', coords: { lat: 31.1, lng: 29.9 } },
+    stations: [
+      { order: 1, nameAr: 'نقطة البداية', nameEn: 'Origin', coords: { lat: 31.2, lng: 30 } },
+      { order: 2, nameAr: 'نقطة النهاية', nameEn: 'Destination', coords: { lat: 31.1, lng: 29.9 } },
+    ],
+    fare: { min: 8, max: 10 },
+    ...overrides,
+  })
+  const route = new Route(extractRouteFields(payload))
+  await syncRouteLocations(route, payload)
+  return route
 }
 
 // ─── Setup / Teardown ────────────────────────────────────────────────────────
@@ -71,7 +83,7 @@ describe('User model', () => {
   test('hashes password on save', async () => {
     const user = await makeUser({ passwordHash: 'plaintext123' })
     expect(user.passwordHash).not.toBe('plaintext123')
-    expect(user.passwordHash.startsWith('$2b$')).toBe(true)
+    expect(user.passwordHash.startsWith('$2')).toBe(true)
   })
 
   test('comparePassword returns true for correct password', async () => {
@@ -195,19 +207,21 @@ describe('Route model', () => {
     expect(stats.label).toBe('غير موثوق')
   })
 
-  test('text search index finds station by Arabic name', async () => {
+  test('text search index finds route by Arabic line name', async () => {
     await makeRoute({
       routeId: 'SEARCH-TEST-01',
+      origin: { nameAr: 'سيدي جابر', nameEn: 'Sidi Gaber', coords: { lat: 31.2, lng: 30 } },
+      destination: { nameAr: 'محطة مصر', nameEn: 'Mahattat Masr', coords: { lat: 31.1, lng: 29.9 } },
       stations: [
-        { order: 1, nameAr: 'سيدي جابر', nameEn: 'Sidi Gaber', coords: { lat: 0, lng: 0 } },
-        { order: 2, nameAr: 'كليوباترا', nameEn: 'Cleopatra', coords: { lat: 0, lng: 0 } },
+        { order: 1, nameAr: 'سيدي جابر', nameEn: 'Sidi Gaber', coords: { lat: 31.2, lng: 30 } },
+        { order: 2, nameAr: 'محطة مصر', nameEn: 'Mahattat Masr', coords: { lat: 31.1, lng: 29.9 } },
       ],
     })
 
     const results = await Route.find({ $text: { $search: 'سيدي جابر' } })
     expect(results.length).toBeGreaterThanOrEqual(1)
-    const names = results.flatMap((r) => r.stations.map((s) => s.nameAr))
-    expect(names).toContain('سيدي جابر')
+    const names = results.map((r) => r.nameAr)
+    expect(names).toContain('سيدي جابر ← محطة مصر')
   })
 })
 

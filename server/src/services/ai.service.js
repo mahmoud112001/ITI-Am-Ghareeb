@@ -1,6 +1,6 @@
 const OpenAI = require('openai')
-const { Route } = require('../models/index.js')
 const { buildSystemPrompt } = require('../ai/promptBuilder.js')
+const { searchRoutes } = require('./routes.service.js')
 
 /**
  * streamTransitAdvice — RAG pipeline:
@@ -25,33 +25,38 @@ async function streamTransitAdvice(origin, destination, userMessage, res) {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
     // ── Step 1: DB lookup ───────────────────────────────────────────────────
-    const originRegex = new RegExp(origin, 'i')
-    const destRegex = new RegExp(destination, 'i')
-
-    const routes = await Route.find({
-      isActive: true,
-      $or: [
-        { 'stations.nameAr': originRegex },
-        { 'stations.nameEn': originRegex },
-        { 'origin.nameAr': originRegex },
-        { 'stations.nameAr': destRegex },
-        { 'stations.nameEn': destRegex },
-        { 'destination.nameAr': destRegex },
-      ],
-    }).limit(5)
+    const routeResults = await searchRoutes(origin, destination, null, null)
+    const itineraries = routeResults.slice(0, 5)
 
     // ── Step 2: Build Arabic context string ─────────────────────────────────
     const context =
-      routes.length > 0
-        ? routes
-            .map(
-              (r) =>
-                `خط: ${r.nameAr}\n` +
-                `محطات: ${r.stations.map((s) => s.nameAr).join(' ← ')}\n` +
-                `تعريفة: ${r.fare.min}–${r.fare.max} جنيه\n` +
-                `أوقات الذروة: ${(r.peakHours || []).join(', ')}\n` +
-                `نصائح: ${(r.tips || []).join('. ')}`
-            )
+      itineraries.length > 0
+        ? itineraries
+            .map((result) => {
+              if (result.itineraryType === 'transfer') {
+                const firstLeg = result.legs[0]
+                const secondLeg = result.legs[1]
+                return (
+                  `رحلة بتحويلة واحدة عبر: ${result.transferPlace?.nameAr}\n` +
+                  `الركوبة الأولى: ${firstLeg.route.nameAr}\n` +
+                  `من: ${firstLeg.boardAt?.nameAr} إلى: ${firstLeg.alightAt?.nameAr}\n` +
+                  `محطات الجزء الأول: ${firstLeg.route.stations.map((s) => s.nameAr).join(' ← ')}\n` +
+                  `الركوبة الثانية: ${secondLeg.route.nameAr}\n` +
+                  `من: ${secondLeg.boardAt?.nameAr} إلى: ${secondLeg.alightAt?.nameAr}\n` +
+                  `محطات الجزء الثاني: ${secondLeg.route.stations.map((s) => s.nameAr).join(' ← ')}\n` +
+                  `إجمالي التعريفة: ${result.totalFare?.min ?? 0}–${result.totalFare?.max ?? 0} جنيه`
+                )
+              }
+
+              const route = result.route
+              return (
+                `خط: ${route.nameAr}\n` +
+                `محطات: ${route.stations.map((s) => s.nameAr).join(' ← ')}\n` +
+                `تعريفة: ${route.fare.min}–${route.fare.max} جنيه\n` +
+                `أوقات الذروة: ${(route.peakHours || []).join(', ')}\n` +
+                `نصائح: ${(route.tips || []).join('. ')}`
+              )
+            })
             .join('\n\n---\n\n')
         : 'لم يتم العثور على بيانات لهذا المسار في قاعدة البيانات.'
 

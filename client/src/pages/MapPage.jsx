@@ -33,6 +33,7 @@ export default function MapPage() {
   const [searchParams] = useSearchParams()
   const navigate       = useNavigate()
   const routeId        = searchParams.get('routeId')
+  const direction      = searchParams.get('direction') || 'forward'
 
   const [userLocation, setUserLocation] = useState(null)
   const [locError, setLocError]         = useState('')
@@ -40,8 +41,8 @@ export default function MapPage() {
 
   // Fetch the selected route
   const { data, isLoading } = useQuery({
-    queryKey: ['route', routeId],
-    queryFn:  () => api.get(`/api/routes/${routeId}`).then((r) => r.data),
+    queryKey: ['route', routeId, direction],
+    queryFn:  () => api.get(`/api/routes/${routeId}`, { params: { direction } }).then((r) => r.data),
     enabled:  !!routeId,
   })
 
@@ -49,15 +50,19 @@ export default function MapPage() {
 
   // Stations with real GPS coordinates (filter zero-coord placeholders)
   const validStations = route
-    ? route.stations.filter((s) => s.coords?.lat !== 0 && s.coords?.lng !== 0)
+    ? (route.stations || []).filter((s) => s.coords?.lat !== 0 && s.coords?.lng !== 0)
     : []
 
   // Polyline positions
-  const polylineCoords = validStations.map((s) => [s.coords.lat, s.coords.lng])
+  const polylineCoords = (route?.mapPoints || [])
+    .filter((s) => s.coords?.lat !== 0 && s.coords?.lng !== 0)
+    .map((s) => [s.coords.lat, s.coords.lng])
 
   // Nearest route (from user's location) computed stations/coords
   const nearestValidStations = nearestRoute ? (nearestRoute.stations || []).filter(s => s.coords?.lat && s.coords?.lng) : []
-  const nearestPolylineCoords = nearestValidStations.map((s) => [s.coords.lat, s.coords.lng])
+  const nearestPolylineCoords = (nearestRoute?.mapPoints || [])
+    .filter((s) => s.coords?.lat && s.coords?.lng)
+    .map((s) => [s.coords.lat, s.coords.lng])
 
   function handleLocate() {
     setLocError('')

@@ -3,6 +3,11 @@ const mongoose = require('mongoose')
 const request = require('supertest')
 const app = require('../../app')
 const { Route, User } = require('../models/index.js')
+const {
+  buildRoutePayloadFromLegacyRoute,
+  extractRouteFields,
+  syncRouteLocations,
+} = require('../utils/routeNetwork.js')
 
 let mongod
 let adminToken
@@ -21,11 +26,11 @@ const userCreds = {
   password: 'User1234',
 }
 
-const newRouteData = {
+const newRouteData = buildRoutePayloadFromLegacyRoute({
   routeId: 'ADMIN-TEST-NEW',
   type: 'microbus',
-  nameAr: 'خط إداري جديد',
-  nameEn: 'Admin New Route',
+  nameAr: 'اسم يدوي غلط',
+  nameEn: 'Wrong Manual Name',
   origin: { nameAr: 'نقطة أ', nameEn: 'Point A' },
   destination: { nameAr: 'نقطة ب', nameEn: 'Point B' },
   stations: [
@@ -33,7 +38,7 @@ const newRouteData = {
     { order: 2, nameAr: 'نقطة ب', nameEn: 'Point B' },
   ],
   fare: { min: 5, max: 10 },
-}
+})
 
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create()
@@ -52,7 +57,7 @@ beforeAll(async () => {
   userToken = userReg.body.accessToken
 
   // Seed one route
-  const route = await Route.create({
+  const seedPayload = buildRoutePayloadFromLegacyRoute({
     routeId: 'ADMIN-SEED-01',
     type: 'microbus',
     nameAr: 'خط مبدئي',
@@ -65,6 +70,8 @@ beforeAll(async () => {
     ],
     fare: { min: 3, max: 6 },
   })
+  const route = new Route(extractRouteFields(seedPayload))
+  await syncRouteLocations(route, seedPayload)
   seededRouteId = route._id.toString()
 })
 
@@ -115,13 +122,15 @@ describe('POST /api/admin/routes', () => {
 
     expect(res.status).toBe(201)
     expect(res.body.route.routeId).toBe('ADMIN-TEST-NEW')
+    expect(res.body.route.nameAr).toBe('نقطة أ ← نقطة ب')
+    expect(res.body.route.nameEn).toBe('Point A → Point B')
   })
 
-  test('as admin with invalid data (missing nameAr) → 400', async () => {
+  test('as admin with invalid data (missing routeId) → 400', async () => {
     const res = await request(app)
       .post('/api/admin/routes')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ ...newRouteData, nameAr: undefined })
+      .send({ ...newRouteData, routeId: undefined })
 
     expect(res.status).toBe(400)
   })
@@ -130,21 +139,27 @@ describe('POST /api/admin/routes', () => {
 // ── Update route ──────────────────────────────────────────────────────────────
 
 describe('PUT /api/admin/routes/:id', () => {
-  test('as admin → 200 with updated route', async () => {
+  test('as admin → 200 with route name re-derived from updated terminals', async () => {
     const res = await request(app)
       .put(`/api/admin/routes/${seededRouteId}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nameEn: 'Updated Seed Route' })
+      .send({
+        stops: [
+          { order: 1, nameAr: 'ج', nameEn: 'C' },
+          { order: 2, nameAr: 'د', nameEn: 'D' },
+        ],
+      })
 
     expect(res.status).toBe(200)
-    expect(res.body.route.nameEn).toBe('Updated Seed Route')
+    expect(res.body.route.nameAr).toBe('ج ← د')
+    expect(res.body.route.nameEn).toBe('C → D')
   })
 
   test('invalid id → 404 or 500', async () => {
     const res = await request(app)
       .put('/api/admin/routes/000000000000000000000000')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ nameEn: 'Ghost Route' })
+      .send({ localName: 'Ghost Route' })
 
     expect([404, 500]).toContain(res.status)
   })
@@ -154,7 +169,7 @@ describe('PUT /api/admin/routes/:id', () => {
 
 describe('DELETE /api/admin/routes/:id', () => {
   test('as admin → 200, isActive becomes false', async () => {
-    const route = await Route.create({
+    const deletePayload = buildRoutePayloadFromLegacyRoute({
       routeId: `DELETE-TEST-${Date.now()}`,
       type: 'microbus',
       nameAr: 'خط للحذف',
@@ -167,6 +182,8 @@ describe('DELETE /api/admin/routes/:id', () => {
       ],
       fare: { min: 3, max: 5 },
     })
+    const route = new Route(extractRouteFields(deletePayload))
+    await syncRouteLocations(route, deletePayload)
 
     const res = await request(app)
       .delete(`/api/admin/routes/${route._id}`)
