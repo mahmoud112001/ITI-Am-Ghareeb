@@ -1,5 +1,8 @@
 # Route + Location Full Rework Plan
 
+> Archived note: this plan reflects an earlier stage of the rework.
+> The later geometry rollout removed the old `isSearchable` idea entirely.
+
 ## Goal
 
 Rework the project so that:
@@ -46,7 +49,6 @@ Rework the project so that:
 - [x] Refactor admin UI to edit the new route model, including:
   - bidirectional flag
   - route ordered stops
-  - location visibility
   - route fare/hours
 - [x] Run backend tests and frontend build, fix all regressions, and iterate until green.
 - [x] Perform a full post-rework production-level code review and tighten any weak spots found during implementation.
@@ -56,7 +58,6 @@ Rework the project so that:
 
 These will not block implementation now.
 
-- [x] Default intermediate stops to `isSearchable: false`, while first/last stops default to searchable unless explicitly overridden.
 - [x] Confirm pickup/dropoff permissions are route-specific stop metadata, not global `Location` data.
 - [x] Route names are terminal-based only and are generated from the first and last stop.
 
@@ -66,5 +67,4 @@ These will not block implementation now.
 - If two shapes go from the same visible terminals, they are stored as two separate route records.
 - `Route.origin` and `Route.destination` store the canonical forward direction terminals.
 - If `Route.isBidirectional === true`, reverse travel is generated at search/render time by reversing the ordered stops.
-- `Location.isSearchable === false` means the point can still be used for route geometry and internal pathing, but should not appear in origin/destination search suggestions.
 - Search fallback after no direct route will attempt one-transfer routing using same-location transfer first and nearby walkable transfer second.

@@ -5,6 +5,7 @@ const {
   User,
 } = require("../models/index.js");
 const {
+  geometryToPointSummaries,
   hasMeaningfulCoords,
   normalizeSearchText,
   populateRouteGraph,
@@ -54,12 +55,11 @@ function canDropoff(stop) {
   return stop?.allowDropoff !== false;
 }
 
-function isSearchable(stop) {
-  return stop?.isSearchable !== false;
-}
-
 function getNearestMapPointDistance(route, userLocation) {
-  const mapPoints = route.mapPoints || [];
+  const mapPoints =
+    route.geometryPoints ||
+    geometryToPointSummaries(route.geometry) ||
+    [];
   let minDistance = Number.POSITIVE_INFINITY;
 
   for (const point of mapPoints) {
@@ -71,7 +71,7 @@ function getNearestMapPointDistance(route, userLocation) {
   return Number.isFinite(minDistance) ? minDistance : null;
 }
 
-async function findMatchingLocations(query, { searchableOnly = true } = {}) {
+async function findMatchingLocations(query) {
   const normalized = normalizeSearchText(query);
   if (!normalized) return [];
 
@@ -85,12 +85,8 @@ async function findMatchingLocations(query, { searchableOnly = true } = {}) {
     ],
   };
 
-  if (searchableOnly) {
-    filter.isSearchable = true;
-  }
-
   return Location.find(filter)
-    .sort({ isSearchable: -1, nameAr: 1 })
+    .sort({ nameAr: 1 })
     .limit(LOCATION_RESULT_LIMIT)
     .lean();
 }
@@ -167,7 +163,7 @@ function buildReachableTransferStops(stops, originLocationIds) {
 
     for (let j = i + 1; j < stops.length; j += 1) {
       const transferStop = stops[j];
-      if (!canDropoff(transferStop) || !isSearchable(transferStop)) continue;
+      if (!canDropoff(transferStop)) continue;
 
       const locationId = getStopId(transferStop);
       const score = j - i;
@@ -197,7 +193,7 @@ function buildBoardsToDestination(stops, destinationLocationIds) {
 
     for (let i = 0; i < j; i += 1) {
       const boardStop = stops[i];
-      if (!canPickup(boardStop) || !isSearchable(boardStop)) continue;
+      if (!canPickup(boardStop)) continue;
 
       const locationId = getStopId(boardStop);
       const score = j - i;
@@ -471,9 +467,9 @@ async function searchRoutesFromCurrentLocation(originCoords, destinationQuery) {
 
 function buildLeg(routeDoc, selectedDirection, match, accuracyStats) {
   const route = toPublicRoute(routeDoc, { selectedDirection });
-  const boardAt = route.mapPoints?.[match?.originIndex ?? 0] || route.origin;
+  const boardAt = route.stops?.[match?.originIndex ?? 0] || route.origin;
   const alightAt =
-    route.mapPoints?.[match?.destinationIndex ?? route.mapPoints.length - 1] ||
+    route.stops?.[match?.destinationIndex ?? route.stops.length - 1] ||
     route.destination;
 
   return {
@@ -692,14 +688,11 @@ async function findNearestRoutes(userCoords, userId = null) {
 }
 
 async function getStations() {
-  const locations = await Location.find(
-    { isSearchable: true },
-    { nameAr: 1 },
-  )
+  const locations = await Location.find({}, { nameAr: 1 })
     .sort({ nameAr: 1 })
     .lean();
 
-  return locations.map((location) => location.nameAr);
+  return Array.from(new Set(locations.map((location) => location.nameAr)));
 }
 
 async function getRouteById(routeId, selectedDirection = "forward") {

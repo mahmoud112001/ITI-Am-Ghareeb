@@ -41,12 +41,74 @@ function locationToCoords(location) {
   };
 }
 
-function resolveStopSearchable(stop, index, totalStops) {
-  if (typeof stop?.isSearchable === "boolean") {
-    return stop.isSearchable;
+function normalizeGeometryPoint(point) {
+  if (Array.isArray(point) && point.length === 2) {
+    const [lng, lat] = point;
+    if (Number.isFinite(lng) && Number.isFinite(lat)) {
+      return [Number(lng), Number(lat)];
+    }
   }
 
-  return index === 0 || index === totalStops - 1;
+  if (point && Number.isFinite(point.lng) && Number.isFinite(point.lat)) {
+    return [Number(point.lng), Number(point.lat)];
+  }
+
+  return null;
+}
+
+function buildGeometryFromStops(stops = []) {
+  const coordinates = stops
+    .map((stop) => normalizeGeometryPoint(stop.coords))
+    .filter(Boolean);
+
+  if (coordinates.length < 2) {
+    return null;
+  }
+
+  return {
+    type: "LineString",
+    coordinates,
+  };
+}
+
+function normalizeRouteGeometry(geometryInput, fallbackStops = []) {
+  const rawCoordinates = Array.isArray(geometryInput)
+    ? geometryInput
+    : geometryInput?.coordinates;
+  const coordinates = Array.isArray(rawCoordinates)
+    ? rawCoordinates.map(normalizeGeometryPoint).filter(Boolean)
+    : [];
+
+  if (coordinates.length >= 2) {
+    return {
+      type: "LineString",
+      coordinates,
+    };
+  }
+
+  const fallbackGeometry = buildGeometryFromStops(fallbackStops);
+  if (fallbackGeometry) {
+    return fallbackGeometry;
+  }
+
+  throw new Error("Route geometry must contain at least two valid points");
+}
+
+function reverseGeometry(geometry) {
+  const normalized = normalizeRouteGeometry(geometry);
+  return {
+    type: "LineString",
+    coordinates: [...normalized.coordinates].reverse(),
+  };
+}
+
+function geometryToPointSummaries(geometry) {
+  if (!geometry?.coordinates?.length) return [];
+
+  return geometry.coordinates.map(([lng, lat], index) => ({
+    order: index + 1,
+    coords: { lat, lng },
+  }));
 }
 
 function formatRouteName(originName, destinationName, delimiter) {
@@ -79,16 +141,15 @@ function normalizeRouteInputStops(stops = []) {
   const orderedStops = [...stops].sort((a, b) => (a.order || 0) - (b.order || 0));
 
   return orderedStops.map((stop, index) => ({
-      order: index + 1,
-      nameAr: stop.nameAr,
-      nameEn: stop.nameEn,
-      coords: stop.coords || { lat: 0, lng: 0 },
-      isSearchable: resolveStopSearchable(stop, index, orderedStops.length),
-      allowPickup: stop.allowPickup !== false,
-      allowDropoff: stop.allowDropoff !== false,
-      aliases: stop.aliases || { ar: [], en: [] },
-      district: stop.district || null,
-    }));
+    order: index + 1,
+    nameAr: stop.nameAr,
+    nameEn: stop.nameEn,
+    coords: stop.coords || { lat: 0, lng: 0 },
+    allowPickup: stop.allowPickup !== false,
+    allowDropoff: stop.allowDropoff !== false,
+    aliases: stop.aliases || { ar: [], en: [] },
+    district: stop.district || null,
+  }));
 }
 
 function buildRouteNamesFromInput(input) {
@@ -128,18 +189,22 @@ function extractRouteFields(input) {
     isBidirectional: input.isBidirectional === true,
     verified: input.verified,
     isActive: input.isActive,
+    geometry: normalizeRouteGeometry(input.geometry, input.stops || []),
   };
 }
 
 function buildRoutePayloadFromLegacyRoute(legacyRoute) {
+  const normalizedStops = normalizeRouteInputStops(legacyRoute.stations || []);
+
   return {
     ...extractRouteFields({
       ...legacyRoute,
       isBidirectional: legacyRoute.direction !== "one_way",
+      stops: normalizedStops,
+      geometry: legacyRoute.geometry,
     }),
-    stops: normalizeRouteInputStops(legacyRoute.stations || []).map((stop) => ({
+    stops: normalizedStops.map((stop) => ({
       ...stop,
-      isSearchable: stop.isSearchable !== false,
       allowPickup: stop.allowPickup !== false,
       allowDropoff: stop.allowDropoff !== false,
     })),
@@ -159,7 +224,6 @@ async function findOrCreateLocation(stop) {
       aliases: stop.aliases || { ar: [], en: [] },
       location: nextLocation,
       district: stop.district || null,
-      isSearchable: stop.isSearchable !== false,
     });
   }
 
@@ -182,11 +246,6 @@ async function findOrCreateLocation(stop) {
 
   if (!location.district && stop.district) {
     location.district = stop.district;
-    changed = true;
-  }
-
-  if (location.isSearchable === false && stop.isSearchable !== false) {
-    location.isSearchable = true;
     changed = true;
   }
 
@@ -221,6 +280,10 @@ async function syncRouteLocations(routeDoc, routeInput) {
     allowPickup: stop.allowPickup !== false,
     allowDropoff: stop.allowDropoff !== false,
   }));
+  routeDoc.geometry = normalizeRouteGeometry(
+    routeInput?.geometry || routeDoc.geometry,
+    normalizedStops,
+  );
   await routeDoc.save();
 
   return locations;
@@ -249,7 +312,6 @@ function summarizeLocation(locationDoc) {
       ? locationToCoords(location.location)
       : { lat: 0, lng: 0 },
     district: location.district || null,
-    isSearchable: location.isSearchable !== false,
   };
 }
 
@@ -273,6 +335,17 @@ function getOrderedRouteStops(routeDoc, selectedDirection = "forward") {
   return selectedDirection === "reverse" ? stops.reverse() : stops;
 }
 
+function getOrderedRouteGeometry(routeDoc, selectedDirection = "forward") {
+  const route = toPlainObject(routeDoc);
+  if (!route?.geometry) {
+    return null;
+  }
+
+  return selectedDirection === "reverse"
+    ? reverseGeometry(route.geometry)
+    : normalizeRouteGeometry(route.geometry);
+}
+
 function buildRouteEndpoints(stops = []) {
   const first = stops[0];
   const last = stops[stops.length - 1];
@@ -285,14 +358,12 @@ function buildRouteEndpoints(stops = []) {
 function toPublicRoute(routeDoc, options = {}) {
   const route = toPlainObject(routeDoc) || {};
   const selectedDirection = options.selectedDirection || "forward";
-  const startIndex = options.startIndex ?? 0;
   const orderedStops = getOrderedRouteStops(route, selectedDirection);
-  const endIndex = options.endIndex ?? orderedStops.length - 1;
-  const segmentStops = orderedStops.slice(startIndex, endIndex + 1);
-  const mapPoints = segmentStops.map((stop) => summarizeRouteStop(stop));
-  const stations = mapPoints.filter((stop) => stop?.isSearchable !== false);
-  const endpoints = buildRouteEndpoints(mapPoints);
+  const stopPoints = orderedStops.map((stop) => summarizeRouteStop(stop));
+  const endpoints = buildRouteEndpoints(stopPoints);
   const routeNames = buildRouteNames(endpoints.origin, endpoints.destination);
+  const geometry = getOrderedRouteGeometry(route, selectedDirection);
+  const geometryPoints = geometryToPointSummaries(geometry);
 
   return {
     ...route,
@@ -300,9 +371,11 @@ function toPublicRoute(routeDoc, options = {}) {
     nameEn: routeNames.nameEn,
     origin: endpoints.origin,
     destination: endpoints.destination,
-    stops: mapPoints,
-    stations,
-    mapPoints,
+    stops: stopPoints,
+    stations: stopPoints,
+    geometry,
+    geometryPoints,
+    mapPoints: geometryPoints,
     fare: route.fare || null,
     operatingHours: route.operatingHours || null,
     peakHours: route.peakHours || [],
@@ -319,12 +392,15 @@ function toAdminRoute(routeDoc) {
     order: index + 1,
     ...summarizeRouteStop(stop),
   }));
+  const geometry = getOrderedRouteGeometry(route);
 
   return {
     ...route,
     origin: summarizeLocation(route.origin),
     destination: summarizeLocation(route.destination),
     stops,
+    geometry,
+    geometryPoints: geometryToPointSummaries(geometry),
   };
 }
 
@@ -340,17 +416,21 @@ async function loadRouteGraphById(routeId) {
 }
 
 module.exports = {
+  buildGeometryFromStops,
   buildLocationKey,
   buildRouteEndpoints,
   buildRoutePayloadFromLegacyRoute,
   coordsToLocation,
   extractRouteFields,
+  geometryToPointSummaries,
   hasMeaningfulCoords,
   loadRouteGraphById,
   locationToCoords,
+  normalizeRouteGeometry,
   normalizeRouteInputStops,
   normalizeSearchText,
   populateRouteGraph,
+  reverseGeometry,
   summarizeLocation,
   summarizeRouteStop,
   syncRouteLocations,

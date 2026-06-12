@@ -60,11 +60,6 @@ const LocationSchema = new Schema(
       default: null,
       trim: true,
     },
-    isSearchable: {
-      type: Boolean,
-      default: true,
-      index: true,
-    },
   },
   { timestamps: true },
 );

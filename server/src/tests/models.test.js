@@ -132,6 +132,8 @@ describe('Route model', () => {
     expect(route.routeId).toBeDefined()
     expect(route.type).toBe('microbus')
     expect(route.localName).toBe('مشروع')
+    expect(route.geometry?.type).toBe('LineString')
+    expect(route.geometry?.coordinates?.length).toBeGreaterThanOrEqual(2)
   })
 
   test('getAccuracyStats returns غير مقيّم بعد when less than 3 ratings', async () => {

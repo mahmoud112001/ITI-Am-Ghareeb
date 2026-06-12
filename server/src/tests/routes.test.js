@@ -246,6 +246,30 @@ describe("GET /api/routes/search", () => {
     expect(routeIds).not.toContain("TEST-MICRO-REV-01");
   });
 
+  test("direct search keeps the full route and marks the matched origin/destination points", async () => {
+    const res = await request(app)
+      .get("/api/routes/search")
+      .query({ origin: "المندرة", destination: "محطة مصر" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.results).toHaveLength(1);
+
+    const matchedRoute = res.body.results[0].route;
+    expect(matchedRoute.stops.map((point) => point.nameAr)).toEqual([
+      "المندرة",
+      "سيدي بشر",
+      "محطة مصر",
+    ]);
+    expect(matchedRoute.geometry.type).toBe("LineString");
+    expect(Array.isArray(matchedRoute.mapPoints)).toBe(true);
+    expect(matchedRoute.matchedSegment).toMatchObject({
+      originIndex: 0,
+      destinationIndex: 2,
+      originStopId: expect.any(String),
+      destinationStopId: expect.any(String),
+    });
+  });
+
   test("returns one-transfer itinerary when no direct route exists", async () => {
     const firstLegPayload = buildRoutePayloadFromLegacyRoute({
       routeId: "TEST-TRANSFER-01",
@@ -423,69 +447,13 @@ describe("GET /api/routes/stations", () => {
     expect(res.body.stations).toContain("الرمل");
   });
 
-  test("excludes non-searchable inner path points from autocomplete", async () => {
-    const hiddenPointPayload = buildRoutePayloadFromLegacyRoute({
-      routeId: "TEST-HIDDEN-INNER-01",
+  test("stations autocomplete includes every saved stop location", async () => {
+    const middlePointPayload = buildRoutePayloadFromLegacyRoute({
+      routeId: "TEST-STOPS-ALL-01",
       type: "microbus",
       direction: "one_way",
-      nameAr: "خط نقطة داخلية",
-      nameEn: "Inner Point Route",
-      origin: {
-        nameAr: "نقطة بداية",
-        nameEn: "Start Point",
-        coords: { lat: 31.24, lng: 29.95 },
-      },
-      destination: {
-        nameAr: "نقطة نهاية",
-        nameEn: "End Point",
-        coords: { lat: 31.26, lng: 29.99 },
-      },
-      stations: [
-        {
-          order: 1,
-          nameAr: "نقطة بداية",
-          nameEn: "Start Point",
-          coords: { lat: 31.24, lng: 29.95 },
-        },
-        {
-          order: 2,
-          nameAr: "نقطة داخلية مخفية",
-          nameEn: "Hidden Inner Point",
-          coords: { lat: 31.25, lng: 29.97 },
-          isSearchable: false,
-        },
-        {
-          order: 3,
-          nameAr: "نقطة نهاية",
-          nameEn: "End Point",
-          coords: { lat: 31.26, lng: 29.99 },
-        },
-      ],
-      fare: { min: 4, max: 6 },
-      verified: true,
-      isActive: true,
-    });
-    const hiddenPointRoute = new Route(extractRouteFields(hiddenPointPayload));
-    await syncRouteLocations(hiddenPointRoute, hiddenPointPayload);
-
-    const stationsRes = await request(app).get("/api/routes/stations");
-    expect(stationsRes.status).toBe(200);
-    expect(stationsRes.body.stations).not.toContain("نقطة داخلية مخفية");
-
-    const routeRes = await request(app).get("/api/routes/TEST-HIDDEN-INNER-01");
-    expect(routeRes.status).toBe(200);
-    expect(routeRes.body.route.mapPoints.map((point) => point.nameAr)).toContain(
-      "نقطة داخلية مخفية",
-    );
-  });
-
-  test("defaults only first and last stops to searchable when flag is omitted", async () => {
-    const defaultSearchablePayload = buildRoutePayloadFromLegacyRoute({
-      routeId: "TEST-DEFAULT-SEARCHABLE-01",
-      type: "microbus",
-      direction: "one_way",
-      nameAr: "خط افتراضي",
-      nameEn: "Default Searchable Route",
+      nameAr: "خط كل المحطات",
+      nameEn: "All Stops Route",
       stations: [
         {
           order: 1,
@@ -510,21 +478,69 @@ describe("GET /api/routes/stations", () => {
       verified: true,
       isActive: true,
     });
-    const defaultRoute = new Route(extractRouteFields(defaultSearchablePayload));
-    await syncRouteLocations(defaultRoute, defaultSearchablePayload);
+    const middlePointRoute = new Route(extractRouteFields(middlePointPayload));
+    await syncRouteLocations(middlePointRoute, middlePointPayload);
 
     const stationsRes = await request(app).get("/api/routes/stations");
     expect(stationsRes.status).toBe(200);
     expect(stationsRes.body.stations).toContain("بداية افتراضية");
+    expect(stationsRes.body.stations).toContain("نقطة وسط افتراضية");
     expect(stationsRes.body.stations).toContain("نهاية افتراضية");
-    expect(stationsRes.body.stations).not.toContain("نقطة وسط افتراضية");
+  });
 
-    const routeRes = await request(app).get("/api/routes/TEST-DEFAULT-SEARCHABLE-01");
-    expect(routeRes.status).toBe(200);
-    expect(
-      routeRes.body.route.mapPoints.find((point) => point.nameAr === "نقطة وسط افتراضية")
-        ?.isSearchable,
-    ).toBe(false);
+  test("route response returns geometry separately and reverses it with reverse direction", async () => {
+    const geometryPayload = buildRoutePayloadFromLegacyRoute({
+      routeId: "TEST-GEOMETRY-REV-01",
+      type: "microbus",
+      direction: "bidirectional",
+      nameAr: "خط هندسي",
+      nameEn: "Geometry Route",
+      stations: [
+        {
+          order: 1,
+          nameAr: "أول",
+          nameEn: "First",
+          coords: { lat: 31.2, lng: 29.91 },
+        },
+        {
+          order: 2,
+          nameAr: "ثاني",
+          nameEn: "Second",
+          coords: { lat: 31.21, lng: 29.92 },
+        },
+      ],
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [29.91, 31.2],
+          [29.915, 31.205],
+          [29.92, 31.21],
+        ],
+      },
+      fare: { min: 3, max: 5 },
+      verified: true,
+      isActive: true,
+    });
+    const geometryRoute = new Route(extractRouteFields(geometryPayload));
+    await syncRouteLocations(geometryRoute, geometryPayload);
+
+    const forwardRes = await request(app).get("/api/routes/TEST-GEOMETRY-REV-01");
+    const reverseRes = await request(app)
+      .get("/api/routes/TEST-GEOMETRY-REV-01")
+      .query({ direction: "reverse" });
+
+    expect(forwardRes.status).toBe(200);
+    expect(reverseRes.status).toBe(200);
+    expect(forwardRes.body.route.mapPoints.map((point) => point.coords.lng)).toEqual([
+      29.91,
+      29.915,
+      29.92,
+    ]);
+    expect(reverseRes.body.route.mapPoints.map((point) => point.coords.lng)).toEqual([
+      29.92,
+      29.915,
+      29.91,
+    ]);
   });
 });
 

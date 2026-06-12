@@ -20,6 +20,38 @@ const OperatingHoursSchema = new Schema(
   { _id: false },
 );
 
+const GeometrySchema = new Schema(
+  {
+    type: {
+      type: String,
+      enum: ["LineString"],
+      default: "LineString",
+      required: true,
+    },
+    coordinates: {
+      type: [[Number]],
+      required: true,
+      validate: {
+        validator(value) {
+          return (
+            Array.isArray(value) &&
+            value.length >= 2 &&
+            value.every(
+              (point) =>
+                Array.isArray(point) &&
+                point.length === 2 &&
+                point.every((coordinate) => Number.isFinite(coordinate)),
+            )
+          );
+        },
+        message:
+          "Route geometry must be a LineString with at least two [lng, lat] points",
+      },
+    },
+  },
+  { _id: false },
+);
+
 const RouteStopSchema = new Schema(
   {
     location: {
@@ -94,6 +126,10 @@ const RouteSchema = new Schema(
         },
         message: "A route must contain at least two ordered stops",
       },
+    },
+    geometry: {
+      type: GeometrySchema,
+      required: true,
     },
     fare: {
       type: FareSchema,

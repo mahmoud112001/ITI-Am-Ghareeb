@@ -11,7 +11,7 @@ const mockRoute = {
   nameEn:  'Mahattat Masr → Mandara',
   fare:    { min: 8, max: 12 },
   peakHours: [],
-  mapPoints: [
+  stations: [
     { _id: 'stop-1', order: 1, nameAr: 'المندرة',  nameEn: 'Mandara', coords: { lat: 31.29, lng: 30.02 } },
     { _id: 'stop-2', order: 2, nameAr: 'سيدي بشر', nameEn: 'Sidi Bishr', coords: { lat: 31.25, lng: 30.01 } },
     { _id: 'stop-3', order: 3, nameAr: 'محطة مصر', nameEn: 'Misr Station', coords: { lat: 31.19, lng: 29.90 } },

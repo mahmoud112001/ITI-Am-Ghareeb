@@ -12,7 +12,6 @@ const stopSchema = Joi.object({
     lat: Joi.number().default(0),
     lng: Joi.number().default(0),
   }).optional(),
-  isSearchable: Joi.boolean().optional(),
   allowPickup: Joi.boolean().optional(),
   allowDropoff: Joi.boolean().optional(),
   district: Joi.string().optional().allow(null, ""),
@@ -26,6 +25,18 @@ const stopSchema = Joi.object({
   }
   return value;
 }, "route stop directionality");
+
+const geometrySchema = Joi.object({
+  type: Joi.string().valid("LineString").default("LineString"),
+  coordinates: Joi.array()
+    .items(
+      Joi.array()
+        .ordered(Joi.number().required(), Joi.number().required())
+        .length(2),
+    )
+    .min(2)
+    .required(),
+}).required();
 
 const fareSchema = Joi.object({
   min: Joi.number().required(),
@@ -58,6 +69,7 @@ const routeSchema = Joi.object({
   verified: Joi.boolean().optional(),
   isActive: Joi.boolean().optional(),
   stops: Joi.array().items(stopSchema).min(2).required(),
+  geometry: geometrySchema,
 });
 
 const routeUpdateSchema = Joi.object({
@@ -77,6 +89,7 @@ const routeUpdateSchema = Joi.object({
   verified: Joi.boolean().optional(),
   isActive: Joi.boolean().optional(),
   stops: Joi.array().items(stopSchema).min(2).optional(),
+  geometry: geometrySchema.optional(),
 }).min(1);
 
 const listRoutes = async (req, res, next) => {

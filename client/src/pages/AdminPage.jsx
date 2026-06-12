@@ -1,6 +1,6 @@
 // src/pages/AdminPage.jsx
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, useMapEvents, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import {
@@ -44,9 +44,13 @@ const EMPTY_STATION = () => ({
   nameEn: '',
   lat: '',
   lng: '',
-  isSearchable: undefined,
   allowPickup: true,
   allowDropoff: true,
+})
+
+const EMPTY_GEOMETRY_POINT = () => ({
+  lat: '',
+  lng: '',
 })
 
 // ── Empty form ────────────────────────────────────────────────────────────────
@@ -57,10 +61,7 @@ const EMPTY_FORM = {
   fareMin: '', fareMax: '',
   hoursStart: '', hoursEnd: '',
   stations: [EMPTY_STATION(), EMPTY_STATION()],
-}
-
-function getDefaultSearchableByPosition(index, total) {
-  return index === 0 || index === total - 1
+  geometry: [],
 }
 
 function buildRoutePreviewNames(stations = []) {
@@ -68,7 +69,7 @@ function buildRoutePreviewNames(stations = []) {
   const first = stations[0] || {}
   const last = stations[stations.length - 1] || {}
   return {
-    nameAr: first.nameAr && last.nameAr ? `${first.nameAr} → ${last.nameAr}` : '',
+    nameAr: first.nameAr && last.nameAr ? `${first.nameAr} ← ${last.nameAr}` : '',
     nameEn: first.nameEn && last.nameEn ? `${first.nameEn} → ${last.nameEn}` : '',
   }
 }
@@ -171,6 +172,53 @@ function FlyToController({ lat, lng }) {
     map.flyTo([lat, lng], Math.max(map.getZoom(), 15), { duration: 1 })
   }, [lat, lng]) // eslint-disable-line react-hooks/exhaustive-deps
   return null
+}
+
+function FitMapToPoints({ points }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (points.length >= 2) {
+      map.fitBounds(points, { padding: [30, 30] })
+      return
+    }
+
+    if (points.length === 1) {
+      map.flyTo(points[0], Math.max(map.getZoom(), 15), { duration: 0.6 })
+    }
+  }, [map, points])
+
+  return null
+}
+
+function toNumberOrEmpty(value) {
+  if (value === '' || value == null) return ''
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : ''
+}
+
+function toLatLngPoint(point) {
+  const lat = toNumberOrEmpty(point?.lat)
+  const lng = toNumberOrEmpty(point?.lng)
+  if (lat === '' || lng === '') return null
+  return { lat, lng }
+}
+
+function toPolylinePositions(points = []) {
+  return points
+    .map(toLatLngPoint)
+    .filter(Boolean)
+    .map((point) => [point.lat, point.lng])
+}
+
+function buildGeometryFromStations(stations = []) {
+  return stations
+    .map((station) => toLatLngPoint(station))
+    .filter(Boolean)
+    .map((point) => ({
+      lat: point.lat.toFixed(6),
+      lng: point.lng.toFixed(6),
+    }))
 }
 
 // ── Map picker modal (with reverse geocoding + place search) ──────────────────
@@ -424,11 +472,284 @@ function MapPickerModal({
   )
 }
 
+function GeometryEditorModal({
+  initialGeometry = [],
+  stations = [],
+  onConfirm,
+  onClose,
+}) {
+  const [points, setPoints] = useState(
+    initialGeometry.length ? initialGeometry : buildGeometryFromStations(stations),
+  )
+
+  const stopPositions = toPolylinePositions(stations)
+  const geometryPositions = toPolylinePositions(points)
+  const fitPoints = geometryPositions.length ? geometryPositions : stopPositions
+
+  function addPoint(lat, lng) {
+    setPoints((current) => [
+      ...current,
+      { lat: Number(lat).toFixed(6), lng: Number(lng).toFixed(6) },
+    ])
+  }
+
+  function updatePoint(index, nextValues) {
+    setPoints((current) =>
+      current.map((point, pointIndex) =>
+        pointIndex === index ? { ...point, ...nextValues } : point,
+      ),
+    )
+  }
+
+  function movePoint(index, direction) {
+    setPoints((current) => {
+      const targetIndex = index + direction
+      if (targetIndex < 0 || targetIndex >= current.length) {
+        return current
+      }
+
+      const nextPoints = [...current]
+      const [point] = nextPoints.splice(index, 1)
+      nextPoints.splice(targetIndex, 0, point)
+      return nextPoints
+    })
+  }
+
+  function removePoint(index) {
+    setPoints((current) => current.filter((_, pointIndex) => pointIndex !== index))
+  }
+
+  function resetFromStops() {
+    setPoints(buildGeometryFromStations(stations))
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center px-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="w-full max-w-6xl rounded-2xl overflow-hidden shadow-xl"
+        style={{ backgroundColor: '#FFFFFF', fontFamily: 'Cairo, sans-serif' }}
+        dir="rtl"
+      >
+        <div className="flex justify-between items-center px-5 py-4" style={{ borderBottom: '1px solid #E5E7EB' }}>
+          <div>
+            <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>رسم مسار الخط</h3>
+            <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
+              اضغط على الخريطة لإضافة نقاط على الشوارع، ثم اسحبها أو غيّر ترتيبها من القائمة.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="grid lg:grid-cols-[1.5fr,1fr]">
+          <div style={{ height: 520 }}>
+            <MapContainer center={ALEX_CENTER} zoom={13} style={{ height: '100%', width: '100%' }}>
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              />
+              {fitPoints.length > 0 && <FitMapToPoints points={fitPoints} />}
+              <MapClickHandler onPick={addPoint} />
+
+              {stopPositions.length >= 2 && (
+                <Polyline
+                  positions={stopPositions}
+                  pathOptions={{ color: '#CBD5E1', weight: 3, dashArray: '6 4', opacity: 0.8 }}
+                />
+              )}
+
+              {stations.map((station, index) => {
+                const point = toLatLngPoint(station)
+                if (!point) return null
+                const isFirst = index === 0
+                const isLast = index === stations.length - 1
+
+                return (
+                  <CircleMarker
+                    key={`stop-${index}`}
+                    center={[point.lat, point.lng]}
+                    radius={isFirst || isLast ? 8 : 6}
+                    pathOptions={{
+                      fillColor: isFirst ? '#10B981' : isLast ? '#DC2626' : '#64748B',
+                      color: '#FFFFFF',
+                      weight: 2,
+                      fillOpacity: 0.95,
+                    }}
+                  />
+                )
+              })}
+
+              {geometryPositions.length >= 2 && (
+                <Polyline
+                  positions={geometryPositions}
+                  pathOptions={{ color: '#1B2A4A', weight: 5, opacity: 0.9 }}
+                />
+              )}
+
+              {points.map((point, index) => {
+                const latLng = toLatLngPoint(point)
+                if (!latLng) return null
+
+                return (
+                  <Marker
+                    key={`geometry-${index}`}
+                    position={[latLng.lat, latLng.lng]}
+                    draggable
+                    eventHandlers={{
+                      dragend: (event) => {
+                        const position = event.target.getLatLng()
+                        updatePoint(index, {
+                          lat: position.lat.toFixed(6),
+                          lng: position.lng.toFixed(6),
+                        })
+                      },
+                    }}
+                  />
+                )
+              })}
+            </MapContainer>
+          </div>
+
+          <div className="border-r p-4 flex flex-col gap-3 max-h-[520px] overflow-y-auto" style={{ borderColor: '#E5E7EB' }}>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={resetFromStops}
+                className="rounded-lg px-3 py-2 text-xs font-semibold"
+                style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }}
+              >
+                استخدم المحطات كأساس
+              </button>
+              <button
+                onClick={() => setPoints([])}
+                className="rounded-lg px-3 py-2 text-xs font-semibold"
+                style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
+              >
+                مسح الكل
+              </button>
+              <button
+                onClick={() => setPoints((current) => current.slice(0, -1))}
+                disabled={points.length === 0}
+                className="rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40"
+                style={{ backgroundColor: '#F3F4F6', color: '#4B5563' }}
+              >
+                حذف آخر نقطة
+              </button>
+            </div>
+
+            <div
+              className="rounded-xl p-3"
+              style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}
+            >
+              <p className="text-xs font-bold mb-1" style={{ color: '#6B7280' }}>
+                نقاط المسار الحالية: {points.length}
+              </p>
+              <p className="text-xs leading-6" style={{ color: '#6B7280' }}>
+                الخط الرمادي المتقطع = ترتيب المحطات
+                <br />
+                الخط الأزرق = المسار الفعلي الذي سيرسم على الخريطة
+              </p>
+            </div>
+
+            {points.length === 0 ? (
+              <div
+                className="rounded-xl p-4 text-sm"
+                style={{ backgroundColor: '#FFFBEB', border: '1px solid #FCD34D', color: '#92400E' }}
+              >
+                لا توجد نقاط مسار بعد. اضغط على الخريطة أو استخدم زر «استخدم المحطات كأساس».
+              </div>
+            ) : (
+              points.map((point, index) => (
+                <div
+                  key={`point-row-${index}`}
+                  className="rounded-xl p-3 flex flex-col gap-2"
+                  style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold" style={{ color: '#1B2A4A' }}>
+                      نقطة المسار {index + 1}
+                    </span>
+                    <button
+                      onClick={() => removePoint(index)}
+                      className="text-xs font-semibold"
+                      style={{ color: '#DC2626' }}
+                    >
+                      حذف
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field
+                      label="Lat"
+                      value={point.lat}
+                      onChange={(value) => updatePoint(index, { lat: value })}
+                      type="number"
+                    />
+                    <Field
+                      label="Lng"
+                      value={point.lng}
+                      onChange={(value) => updatePoint(index, { lng: value })}
+                      type="number"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => movePoint(index, -1)}
+                      disabled={index === 0}
+                      className="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold disabled:opacity-40"
+                      style={{ backgroundColor: '#E5E7EB', color: '#374151' }}
+                    >
+                      لأعلى
+                    </button>
+                    <button
+                      onClick={() => movePoint(index, 1)}
+                      disabled={index === points.length - 1}
+                      className="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold disabled:opacity-40"
+                      style={{ backgroundColor: '#E5E7EB', color: '#374151' }}
+                    >
+                      لأسفل
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-3 px-5 py-4" style={{ borderTop: '1px solid #E5E7EB' }}>
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2"
+            style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
+          >
+            إلغاء
+          </button>
+          <button
+            onClick={() => onConfirm(points)}
+            className="flex-1 rounded-xl py-2.5 text-sm font-bold hover:opacity-80"
+            style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
+          >
+            اعتماد المسار
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Route form modal (add & edit) ─────────────────────────────────────────────
 function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
   const [form, setForm]           = useState(initial || EMPTY_FORM)
   const [err,  setErr]            = useState('')
   const [mapPicker, setMapPicker] = useState(null) // { stationIndex, label }
+  const [geometryEditorOpen, setGeometryEditorOpen] = useState(false)
 
   function set(key, val) { setForm((f) => ({ ...f, [key]: val })) }
 
@@ -471,6 +792,10 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
       setErr('كل نقطة لازم تسمح بالركوب أو النزول أو الاثنين')
       return
     }
+    if ((form.geometry || []).filter((point) => toLatLngPoint(point)).length < 2) {
+      setErr('ارسم مسار الخط على الخريطة أو استخدم المحطات كأساس للمسار')
+      return
+    }
 
     setErr('')
 
@@ -479,12 +804,13 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
       nameAr: s.nameAr,
       nameEn: s.nameEn,
       coords: { lat: s.lat !== '' ? Number(s.lat) : 0, lng: s.lng !== '' ? Number(s.lng) : 0 },
-      isSearchable: typeof s.isSearchable === 'boolean'
-        ? s.isSearchable
-        : getDefaultSearchableByPosition(i, form.stations.length),
       allowPickup: s.allowPickup !== false,
       allowDropoff: s.allowDropoff !== false,
     }))
+    const geometry = (form.geometry || [])
+      .map(toLatLngPoint)
+      .filter(Boolean)
+      .map((point) => [point.lng, point.lat])
 
     onSave({
       routeId:        form.routeId,
@@ -493,6 +819,7 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
       fare:           { min: Number(form.fareMin), max: Number(form.fareMax) },
       operatingHours: { start: form.hoursStart, end: form.hoursEnd },
       stops:          stations,
+      geometry:       { type: 'LineString', coordinates: geometry },
     })
   }
 
@@ -587,16 +914,6 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
                     <Field label="خط العرض (Lat)" value={station.lat} onChange={(v) => setStation(i, 'lat', v)} type="number" placeholder="31.2001" />
                     <Field label="خط الطول (Lng)" value={station.lng} onChange={(v) => setStation(i, 'lng', v)} type="number" placeholder="29.9187" />
                   </div>
-                  <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
-                    <input
-                      type="checkbox"
-                      checked={typeof station.isSearchable === 'boolean'
-                        ? station.isSearchable
-                        : getDefaultSearchableByPosition(i, form.stations.length)}
-                      onChange={(e) => setStation(i, 'isSearchable', e.target.checked)}
-                    />
-                    تظهر في بحث الانطلاق والوصول
-                  </label>
                   <div className="grid grid-cols-2 gap-2">
                     <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
                       <input
@@ -636,6 +953,44 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
             >
               + إضافة محطة
             </button>
+
+            <SectionLabel>مسار الخط على الشوارع</SectionLabel>
+            <div
+              className="rounded-xl p-3 flex flex-col gap-3"
+              style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}
+            >
+              <p className="text-xs leading-6" style={{ color: '#6B7280' }}>
+                المحطات تظل للركوب والنزول والبحث.
+                <br />
+                المسار يرسم الطريق الفعلي على الخريطة كنقاط هندسية مستقلة.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setGeometryEditorOpen(true)}
+                  className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
+                  style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }}
+                >
+                  {form.geometry?.length ? 'تعديل المسار على الخريطة' : 'رسم المسار على الخريطة'}
+                </button>
+                <button
+                  onClick={() => set('geometry', buildGeometryFromStations(form.stations))}
+                  className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
+                  style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+                >
+                  أنشئ المسار من المحطات
+                </button>
+                <button
+                  onClick={() => set('geometry', [])}
+                  className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
+                  style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
+                >
+                  مسح المسار
+                </button>
+              </div>
+              <p className="text-xs font-semibold" style={{ color: '#374151' }}>
+                عدد نقاط المسار الحالية: {form.geometry?.length || 0}
+              </p>
+            </div>
           </div>
 
           {err && <p className="text-sm text-center mt-3" style={{ color: '#DC2626' }}>{err}</p>}
@@ -656,6 +1011,17 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
           stationLabel={mapPicker.label}
           onConfirm={handleMapConfirm}
           onClose={() => setMapPicker(null)}
+        />
+      )}
+      {geometryEditorOpen && (
+        <GeometryEditorModal
+          initialGeometry={form.geometry || []}
+          stations={form.stations}
+          onConfirm={(geometryPoints) => {
+            set('geometry', geometryPoints)
+            setGeometryEditorOpen(false)
+          }}
+          onClose={() => setGeometryEditorOpen(false)}
         />
       )}
     </>
@@ -705,11 +1071,16 @@ function buildEditForm(route) {
           nameEn: s.nameEn,
           lat:    s.coords?.lat != null && s.coords.lat !== 0 ? String(s.coords.lat) : '',
           lng:    s.coords?.lng != null && s.coords.lng !== 0 ? String(s.coords.lng) : '',
-          isSearchable: s.isSearchable !== false,
           allowPickup: s.allowPickup !== false,
           allowDropoff: s.allowDropoff !== false,
         }))
       : [EMPTY_STATION(), EMPTY_STATION()],
+    geometry: route.geometryPoints?.length
+      ? route.geometryPoints.map((point) => ({
+          lat: point.coords?.lat != null ? String(point.coords.lat) : '',
+          lng: point.coords?.lng != null ? String(point.coords.lng) : '',
+        }))
+      : [],
   }
 }
 

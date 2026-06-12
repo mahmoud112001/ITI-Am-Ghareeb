@@ -69,6 +69,27 @@ function getPointMarkerStyle({ isEndpoint, isMatchedOrigin, isMatchedDestination
   }
 }
 
+function distanceSquared(point, target) {
+  return (point.coords.lat - target.coords.lat) ** 2 + (point.coords.lng - target.coords.lng) ** 2
+}
+
+function findNearestGeometryIndex(geometryPoints, target) {
+  if (!target?.coords || !geometryPoints.length) return -1
+
+  let bestIndex = -1
+  let bestDistance = Number.POSITIVE_INFINITY
+
+  geometryPoints.forEach((point, index) => {
+    const score = distanceSquared(point, target)
+    if (score < bestDistance) {
+      bestDistance = score
+      bestIndex = index
+    }
+  })
+
+  return bestIndex
+}
+
 // ── MapPage ───────────────────────────────────────────────────────────────────
 export default function MapPage() {
   const [searchParams] = useSearchParams()
@@ -90,20 +111,36 @@ export default function MapPage() {
   })
 
   const route = data?.route || null
-  const routePoints = route?.mapPoints || []
+  const geometryPoints = route?.geometryPoints || []
   const visibleStations = route?.stations || []
 
   // Stations with real GPS coordinates (filter zero-coord placeholders)
   const validStations = visibleStations.filter((s) => s.coords?.lat !== 0 && s.coords?.lng !== 0)
 
   // Polyline positions
-  const polylineCoords = (route?.mapPoints || [])
+  const polylineCoords = geometryPoints
     .filter((s) => s.coords?.lat !== 0 && s.coords?.lng !== 0)
     .map((s) => [s.coords.lat, s.coords.lng])
 
+  const matchedOriginStation = validStations.find((station) => String(station._id) === matchedOriginId) || null
+  const matchedDestinationStation = validStations.find((station) => String(station._id) === matchedDestinationId) || null
+  const matchedOriginGeometryIndex = findNearestGeometryIndex(geometryPoints, matchedOriginStation)
+  const matchedDestinationGeometryIndex = findNearestGeometryIndex(geometryPoints, matchedDestinationStation)
+  const highlightGeometryCoords =
+    matchedOriginGeometryIndex >= 0 &&
+    matchedDestinationGeometryIndex >= 0 &&
+    matchedOriginGeometryIndex !== matchedDestinationGeometryIndex
+      ? geometryPoints
+          .slice(
+            Math.min(matchedOriginGeometryIndex, matchedDestinationGeometryIndex),
+            Math.max(matchedOriginGeometryIndex, matchedDestinationGeometryIndex) + 1,
+          )
+          .map((point) => [point.coords.lat, point.coords.lng])
+      : []
+
   // Nearest route (from user's location) computed stations/coords
   const nearestValidStations = nearestRoute ? (nearestRoute.stations || []).filter(s => s.coords?.lat && s.coords?.lng) : []
-  const nearestPolylineCoords = (nearestRoute?.mapPoints || [])
+  const nearestPolylineCoords = (nearestRoute?.geometryPoints || [])
     .filter((s) => s.coords?.lat && s.coords?.lng)
     .map((s) => [s.coords.lat, s.coords.lng])
 
@@ -166,7 +203,7 @@ export default function MapPage() {
             {/* All stations — including zero-coord ones (shown greyed out) */}
             <div className="p-4">
               <p className="text-xs font-semibold mb-3" style={{ color: '#6B7280' }}>
-                المحطات الظاهرة ({visibleStations.length})
+                محطات الخط ({visibleStations.length})
               </p>
               <ol className="flex flex-col gap-2.5">
                 {visibleStations.map((s, i) => {
@@ -251,7 +288,14 @@ export default function MapPage() {
           {polylineCoords.length >= 2 && (
             <Polyline
               positions={polylineCoords}
-              pathOptions={{ color: '#1B2A4A', weight: 4, opacity: 0.85 }}
+              pathOptions={{ color: '#1B2A4A', weight: 5, opacity: 0.85 }}
+            />
+          )}
+
+          {highlightGeometryCoords.length >= 2 && (
+            <Polyline
+              positions={highlightGeometryCoords}
+              pathOptions={{ color: '#F4A833', weight: 7, opacity: 0.95 }}
             />
           )}
 

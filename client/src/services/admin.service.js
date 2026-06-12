@@ -23,7 +23,7 @@ export const getAdminRoutes = (page = 1, limit = 10) =>
 
 /**
  * POST /api/admin
- * Body: { routeId, type, fare: { min, max }, operatingHours: { start, end }, stops[] }
+ * Body: { routeId, type, fare: { min, max }, operatingHours: { start, end }, stops[], geometry }
  * Route names are derived on the server from the first and last stop.
  */
 export const createRoute = (body) =>
@@ -31,7 +31,7 @@ export const createRoute = (body) =>
 
 /**
  * PUT /api/admin/:id
- * Body: same shape as createRoute (partial updates accepted by the server)
+ * Body: same shape as createRoute, including geometry when the road path changes
  */
 export const updateRoute = (id, body) =>
   api.put(`/api/admin/${id}`, body).then((r) => r.data)

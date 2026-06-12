@@ -73,7 +73,7 @@ async function updateRoute(id, data) {
     }),
   );
 
-  if (data.stops) {
+  if (data.stops || data.geometry) {
     await syncRouteLocations(route, {
       ...route.toObject(),
       ...data,
