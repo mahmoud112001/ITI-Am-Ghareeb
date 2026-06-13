@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import RouteCard from './RouteCard'
 
 function formatFare(fare) {
@@ -6,9 +7,41 @@ function formatFare(fare) {
 }
 
 export default function TransferRouteCard({ itinerary }) {
+  const navigate = useNavigate()
   const [firstLeg, secondLeg] = itinerary.legs || []
 
   if (!firstLeg || !secondLeg) return null
+
+  function openTransferMap() {
+    const params = new URLSearchParams({
+      itineraryType: 'transfer',
+      firstRouteId: firstLeg.route.routeId,
+      firstDirection: firstLeg.route.selectedDirection || 'forward',
+      secondRouteId: secondLeg.route.routeId,
+      secondDirection: secondLeg.route.selectedDirection || 'forward',
+    })
+
+    if (firstLeg.route.matchedSegment?.originStopId) {
+      params.set('firstOriginId', firstLeg.route.matchedSegment.originStopId)
+    }
+    if (firstLeg.route.matchedSegment?.destinationStopId) {
+      params.set('firstDestinationId', firstLeg.route.matchedSegment.destinationStopId)
+    }
+    if (secondLeg.route.matchedSegment?.originStopId) {
+      params.set('secondOriginId', secondLeg.route.matchedSegment.originStopId)
+    }
+    if (secondLeg.route.matchedSegment?.destinationStopId) {
+      params.set('secondDestinationId', secondLeg.route.matchedSegment.destinationStopId)
+    }
+    if (itinerary.transferWalk?.from?._id) {
+      params.set('transferFromId', itinerary.transferWalk.from._id)
+    }
+    if (itinerary.transferWalk?.to?._id) {
+      params.set('transferToId', itinerary.transferWalk.to._id)
+    }
+
+    navigate(`/map?${params.toString()}`)
+  }
 
   return (
     <div
@@ -87,6 +120,16 @@ export default function TransferRouteCard({ itinerary }) {
             accuracyStats={secondLeg.accuracyStats}
             compact
           />
+        </div>
+
+        <div className="mt-3">
+          <button
+            onClick={openTransferMap}
+            className="w-full rounded-xl py-2.5 text-sm font-semibold border-2 transition-colors hover:opacity-80"
+            style={{ borderColor: '#1B2A4A', color: '#1B2A4A', backgroundColor: 'transparent' }}
+          >
+            الخريطة
+          </button>
         </div>
       </div>
     </div>
