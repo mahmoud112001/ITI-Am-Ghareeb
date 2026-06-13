@@ -160,8 +160,14 @@ function SectionLabel({ children }) {
 }
 
 // ── Map click handler (inside MapContainer) ───────────────────────────────────
-function MapClickHandler({ onPick }) {
-  useMapEvents({ click: (e) => onPick(e.latlng.lat, e.latlng.lng) })
+function MapClickHandler({ onPick, onUndo }) {
+  useMapEvents({
+    click: (e) => onPick(e.latlng.lat, e.latlng.lng),
+    contextmenu: (e) => {
+      if (e.originalEvent?.preventDefault) e.originalEvent.preventDefault()
+      onUndo?.()
+    },
+  })
   return null
 }
 
@@ -186,7 +192,7 @@ function FitMapToPoints({ points }) {
     if (points.length === 1) {
       map.flyTo(points[0], Math.max(map.getZoom(), 15), { duration: 0.6 })
     }
-  }, [map, points])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return null
 }
@@ -209,6 +215,23 @@ function toPolylinePositions(points = []) {
     .map(toLatLngPoint)
     .filter(Boolean)
     .map((point) => [point.lat, point.lng])
+}
+
+function clonePoints(points = []) {
+  return points.map((point) => ({ ...point }))
+}
+
+function arePointListsEqual(left = [], right = []) {
+  if (left.length !== right.length) return false
+
+  return left.every((point, index) => (
+    point.lat === right[index]?.lat && point.lng === right[index]?.lng
+  ))
+}
+
+function isTypingTarget(target) {
+  const targetTag = target?.tagName?.toLowerCase()
+  return targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select' || target?.isContentEditable
 }
 
 function buildGeometryFromStations(stations = []) {
@@ -481,20 +504,86 @@ function GeometryEditorModal({
   const [points, setPoints] = useState(
     initialGeometry.length ? initialGeometry : buildGeometryFromStations(stations),
   )
+  const [history, setHistory] = useState([])
 
   const stopPositions = toPolylinePositions(stations)
   const geometryPositions = toPolylinePositions(points)
   const fitPoints = geometryPositions.length ? geometryPositions : stopPositions
 
+  function applyPointsChange(updater) {
+    setPoints((current) => {
+      const next = typeof updater === 'function' ? updater(current) : updater
+      const nextSnapshot = clonePoints(next)
+
+      if (arePointListsEqual(current, nextSnapshot)) {
+        return current
+      }
+
+      setHistory((entries) => [...entries, clonePoints(current)])
+      return nextSnapshot
+    })
+  }
+
+  function undoLastAction() {
+    setHistory((entries) => {
+      if (entries.length === 0) return entries
+
+      const previous = entries[entries.length - 1]
+      setPoints(clonePoints(previous))
+      return entries.slice(0, -1)
+    })
+  }
+
+  function removeLastPoint() {
+    applyPointsChange((current) => current.slice(0, -1))
+  }
+
+  useEffect(() => {
+    function handleShortcut(event) {
+      if (isTypingTarget(event.target)) return
+
+      const isUndoShortcut = (event.ctrlKey || event.metaKey) && event.code === 'KeyZ'
+      const isRemoveLastShortcut = event.code === 'Backspace' || event.code === 'Delete'
+      const isResetShortcut = event.altKey && event.code === 'KeyR'
+      const isClearShortcut = event.altKey && event.code === 'KeyX'
+
+      if (isUndoShortcut) {
+        event.preventDefault()
+        undoLastAction()
+        return
+      }
+
+      if (isRemoveLastShortcut) {
+        event.preventDefault()
+        removeLastPoint()
+        return
+      }
+
+      if (isResetShortcut) {
+        event.preventDefault()
+        resetFromStops()
+        return
+      }
+
+      if (isClearShortcut) {
+        event.preventDefault()
+        applyPointsChange([])
+      }
+    }
+
+    document.addEventListener('keydown', handleShortcut, true)
+    return () => document.removeEventListener('keydown', handleShortcut, true)
+  }, [history])
+
   function addPoint(lat, lng) {
-    setPoints((current) => [
+    applyPointsChange((current) => [
       ...current,
       { lat: Number(lat).toFixed(6), lng: Number(lng).toFixed(6) },
     ])
   }
 
   function updatePoint(index, nextValues) {
-    setPoints((current) =>
+    applyPointsChange((current) =>
       current.map((point, pointIndex) =>
         pointIndex === index ? { ...point, ...nextValues } : point,
       ),
@@ -502,7 +591,7 @@ function GeometryEditorModal({
   }
 
   function movePoint(index, direction) {
-    setPoints((current) => {
+    applyPointsChange((current) => {
       const targetIndex = index + direction
       if (targetIndex < 0 || targetIndex >= current.length) {
         return current
@@ -516,11 +605,11 @@ function GeometryEditorModal({
   }
 
   function removePoint(index) {
-    setPoints((current) => current.filter((_, pointIndex) => pointIndex !== index))
+    applyPointsChange((current) => current.filter((_, pointIndex) => pointIndex !== index))
   }
 
   function resetFromStops() {
-    setPoints(buildGeometryFromStations(stations))
+    applyPointsChange(buildGeometryFromStations(stations))
   }
 
   return (
@@ -530,8 +619,8 @@ function GeometryEditorModal({
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="w-full max-w-6xl rounded-2xl overflow-hidden shadow-xl"
-        style={{ backgroundColor: '#FFFFFF', fontFamily: 'Cairo, sans-serif' }}
+        className="w-full max-w-6xl rounded-2xl overflow-hidden shadow-xl flex flex-col"
+        style={{ backgroundColor: '#FFFFFF', height: '80vh', fontFamily: 'Cairo, sans-serif' }}
         dir="rtl"
       >
         <div className="flex justify-between items-center px-5 py-4" style={{ borderBottom: '1px solid #E5E7EB' }}>
@@ -548,15 +637,18 @@ function GeometryEditorModal({
           </button>
         </div>
 
-        <div className="grid lg:grid-cols-[1.5fr,1fr]">
-          <div style={{ height: 520 }}>
+        <div className="flex-1 min-h-0 grid lg:grid-cols-[1.5fr,1fr]">
+          <div className="min-h-[320px] lg:min-h-0 lg:h-full">
             <MapContainer center={ALEX_CENTER} zoom={13} style={{ height: '100%', width: '100%' }}>
               <TileLayer
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               />
               {fitPoints.length > 0 && <FitMapToPoints points={fitPoints} />}
-              <MapClickHandler onPick={addPoint} />
+              <MapClickHandler
+                onPick={addPoint}
+                onUndo={removeLastPoint}
+              />
 
               {stopPositions.length >= 2 && (
                 <Polyline
@@ -617,29 +709,45 @@ function GeometryEditorModal({
             </MapContainer>
           </div>
 
-          <div className="border-r p-4 flex flex-col gap-3 max-h-[520px] overflow-y-auto" style={{ borderColor: '#E5E7EB' }}>
+          <div className="border-r p-4 flex flex-col gap-3 overflow-y-auto min-h-0" style={{ borderColor: '#E5E7EB' }}>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={resetFromStops}
                 className="rounded-lg px-3 py-2 text-xs font-semibold"
                 style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }}
+                title="Alt+R"
               >
                 استخدم المحطات كأساس
+                <span className="mr-2 text-[11px] opacity-70">Alt+R</span>
               </button>
               <button
-                onClick={() => setPoints([])}
+                onClick={() => applyPointsChange([])}
                 className="rounded-lg px-3 py-2 text-xs font-semibold"
                 style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
+                title="Alt+X"
               >
                 مسح الكل
+                <span className="mr-2 text-[11px] opacity-70">Alt+X</span>
               </button>
               <button
-                onClick={() => setPoints((current) => current.slice(0, -1))}
+                onClick={undoLastAction}
+                disabled={history.length === 0}
+                className="rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40"
+                style={{ backgroundColor: '#F3F4F6', color: '#4B5563' }}
+                title="Ctrl+Z / Cmd+Z"
+              >
+                تراجع
+                <span className="mr-2 text-[11px] opacity-70">Ctrl+Z</span>
+              </button>
+              <button
+                onClick={removeLastPoint}
                 disabled={points.length === 0}
                 className="rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40"
                 style={{ backgroundColor: '#F3F4F6', color: '#4B5563' }}
+                title="Backspace / Delete / Right Click"
               >
                 حذف آخر نقطة
+                <span className="mr-2 text-[11px] opacity-70">⌫ / Right Click</span>
               </button>
             </div>
 
@@ -826,16 +934,16 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center px-4"
+        className="fixed inset-0 z-50 flex items-center justify-center px-3 md:px-4"
         style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
         <div
-          className="w-full max-w-lg rounded-2xl p-6 overflow-y-auto"
+          className="w-full max-w-6xl rounded-2xl overflow-hidden shadow-xl flex flex-col"
           style={{ backgroundColor: '#FFFFFF', maxHeight: '90vh', fontFamily: 'Cairo, sans-serif' }}
           dir="rtl"
         >
-          <div className="flex justify-between items-center mb-5">
+          <div className="flex justify-between items-center px-4 py-4 md:px-6 md:py-5" style={{ borderBottom: '1px solid #E5E7EB' }}>
             <h2 className="text-lg font-bold" style={{ color: '#1B2A4A' }}>{title}</h2>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -844,158 +952,160 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
             </button>
           </div>
 
-          <div className="flex flex-col gap-3">
-            <SectionLabel>معلومات الخط</SectionLabel>
-            <Field label="معرف الخط *"          value={form.routeId} onChange={(v) => set('routeId', v)} placeholder="ALEX-MICRO-01" />
+          <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-5">
+            <div className="flex flex-col gap-3">
+              <SectionLabel>معلومات الخط</SectionLabel>
+              <Field label="معرف الخط *"          value={form.routeId} onChange={(v) => set('routeId', v)} placeholder="ALEX-MICRO-01" />
 
-            <div>
-              <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>النوع</label>
-              <select
-                value={form.type}
-                onChange={(e) => set('type', e.target.value)}
-                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-                style={{ borderColor: '#D1D5DB', fontFamily: 'Cairo, sans-serif' }}
+              <div>
+                <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>النوع</label>
+                <select
+                  value={form.type}
+                  onChange={(e) => set('type', e.target.value)}
+                  className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                  style={{ borderColor: '#D1D5DB', fontFamily: 'Cairo, sans-serif' }}
+                >
+                  {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#1B2A4A' }}>
+                <input
+                  type="checkbox"
+                  checked={form.isBidirectional === true}
+                  onChange={(e) => set('isBidirectional', e.target.checked)}
+                />
+                الخط يعمل في الاتجاهين
+              </label>
+
+              <div className="rounded-xl p-3" style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}>
+                <p className="text-xs font-bold mb-2" style={{ color: '#6B7280' }}>اسم الخط يتولد تلقائياً من أول وآخر نقطة</p>
+                <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>
+                  {buildRoutePreviewNames(form.stations).nameAr || 'أدخل أول وآخر نقطة'}
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+                  {buildRoutePreviewNames(form.stations).nameEn || 'Enter first and last stop'}
+                </p>
+              </div>
+
+              <SectionLabel>التعريفة والمواعيد</SectionLabel>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="أدنى تعريفة *" value={form.fareMin}    onChange={(v) => set('fareMin',    v)} type="number" placeholder="8" />
+                <Field label="أقصى تعريفة *" value={form.fareMax}    onChange={(v) => set('fareMax',    v)} type="number" placeholder="12" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="بداية التشغيل" value={form.hoursStart} onChange={(v) => set('hoursStart', v)} placeholder="6:00" />
+                <Field label="نهاية التشغيل" value={form.hoursEnd}   onChange={(v) => set('hoursEnd',   v)} placeholder="23:00" />
+              </div>
+
+              <SectionLabel>المحطات — الأولى هي الانطلاق، الأخيرة هي الوصول</SectionLabel>
+
+              {form.stations.map((station, i) => {
+                const isFirst     = i === 0
+                const isLast      = i === form.stations.length - 1
+                const stationLabel = isFirst ? '🟢 نقطة الانطلاق' : isLast ? '🔴 نقطة الوصول' : `محطة ${i + 1}`
+                const borderColor  = isFirst ? '#D1FAE5' : isLast ? '#FEE2E2' : '#E5E7EB'
+                const hasCoords    = station.lat !== '' && station.lng !== ''
+
+                return (
+                  <div key={i} className="rounded-xl p-3 flex flex-col gap-2" style={{ backgroundColor: '#F9FAFB', border: `2px solid ${borderColor}` }}>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold" style={{ color: '#374151' }}>{stationLabel}</span>
+                      {!isFirst && !isLast && form.stations.length > 2 && (
+                        <button onClick={() => removeStation(i)} className="text-xs font-semibold" style={{ color: '#DC2626' }}>حذف</button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Field label="بالعربي *"    value={station.nameAr} onChange={(v) => setStation(i, 'nameAr', v)} placeholder="محطة مصر" />
+                      <Field label="بالإنجليزي *" value={station.nameEn} onChange={(v) => setStation(i, 'nameEn', v)} placeholder="Misr Station" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Field label="خط العرض (Lat)" value={station.lat} onChange={(v) => setStation(i, 'lat', v)} type="number" placeholder="31.2001" />
+                      <Field label="خط الطول (Lng)" value={station.lng} onChange={(v) => setStation(i, 'lng', v)} type="number" placeholder="29.9187" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
+                        <input
+                          type="checkbox"
+                          checked={station.allowPickup !== false}
+                          onChange={(e) => setStation(i, 'allowPickup', e.target.checked)}
+                        />
+                        يسمح بالركوب من هنا
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
+                        <input
+                          type="checkbox"
+                          checked={station.allowDropoff !== false}
+                          onChange={(e) => setStation(i, 'allowDropoff', e.target.checked)}
+                        />
+                        يسمح بالنزول هنا
+                      </label>
+                    </div>
+                    <button
+                      onClick={() => openMapPicker(i, stationLabel)}
+                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold w-full justify-center transition-opacity hover:opacity-80"
+                      style={{ backgroundColor: hasCoords ? '#D1FAE5' : '#FEF3C7', color: hasCoords ? '#065F46' : '#92400E' }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z" /><circle cx="12" cy="10" r="3" />
+                      </svg>
+                      {hasCoords ? `📍 ${Number(station.lat).toFixed(4)}, ${Number(station.lng).toFixed(4)}` : 'اختر من الخريطة'}
+                    </button>
+                  </div>
+                )
+              })}
+
+              <button
+                onClick={addStation}
+                className="w-full rounded-xl py-2 text-sm font-semibold border-2 border-dashed hover:opacity-70"
+                style={{ borderColor: '#F4A833', color: '#F4A833' }}
               >
-                {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
+                + إضافة محطة
+              </button>
 
-            <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#1B2A4A' }}>
-              <input
-                type="checkbox"
-                checked={form.isBidirectional === true}
-                onChange={(e) => set('isBidirectional', e.target.checked)}
-              />
-              الخط يعمل في الاتجاهين
-            </label>
-
-            <div className="rounded-xl p-3" style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}>
-              <p className="text-xs font-bold mb-2" style={{ color: '#6B7280' }}>اسم الخط يتولد تلقائياً من أول وآخر نقطة</p>
-              <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>
-                {buildRoutePreviewNames(form.stations).nameAr || 'أدخل أول وآخر نقطة'}
-              </p>
-              <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                {buildRoutePreviewNames(form.stations).nameEn || 'Enter first and last stop'}
-              </p>
-            </div>
-
-            <SectionLabel>التعريفة والمواعيد</SectionLabel>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="أدنى تعريفة *" value={form.fareMin}    onChange={(v) => set('fareMin',    v)} type="number" placeholder="8" />
-              <Field label="أقصى تعريفة *" value={form.fareMax}    onChange={(v) => set('fareMax',    v)} type="number" placeholder="12" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="بداية التشغيل" value={form.hoursStart} onChange={(v) => set('hoursStart', v)} placeholder="6:00" />
-              <Field label="نهاية التشغيل" value={form.hoursEnd}   onChange={(v) => set('hoursEnd',   v)} placeholder="23:00" />
-            </div>
-
-            <SectionLabel>المحطات — الأولى هي الانطلاق، الأخيرة هي الوصول</SectionLabel>
-
-            {form.stations.map((station, i) => {
-              const isFirst     = i === 0
-              const isLast      = i === form.stations.length - 1
-              const stationLabel = isFirst ? '🟢 نقطة الانطلاق' : isLast ? '🔴 نقطة الوصول' : `محطة ${i + 1}`
-              const borderColor  = isFirst ? '#D1FAE5' : isLast ? '#FEE2E2' : '#E5E7EB'
-              const hasCoords    = station.lat !== '' && station.lng !== ''
-
-              return (
-                <div key={i} className="rounded-xl p-3 flex flex-col gap-2" style={{ backgroundColor: '#F9FAFB', border: `2px solid ${borderColor}` }}>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold" style={{ color: '#374151' }}>{stationLabel}</span>
-                    {!isFirst && !isLast && form.stations.length > 2 && (
-                      <button onClick={() => removeStation(i)} className="text-xs font-semibold" style={{ color: '#DC2626' }}>حذف</button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Field label="بالعربي *"    value={station.nameAr} onChange={(v) => setStation(i, 'nameAr', v)} placeholder="محطة مصر" />
-                    <Field label="بالإنجليزي *" value={station.nameEn} onChange={(v) => setStation(i, 'nameEn', v)} placeholder="Misr Station" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Field label="خط العرض (Lat)" value={station.lat} onChange={(v) => setStation(i, 'lat', v)} type="number" placeholder="31.2001" />
-                    <Field label="خط الطول (Lng)" value={station.lng} onChange={(v) => setStation(i, 'lng', v)} type="number" placeholder="29.9187" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
-                      <input
-                        type="checkbox"
-                        checked={station.allowPickup !== false}
-                        onChange={(e) => setStation(i, 'allowPickup', e.target.checked)}
-                      />
-                      يسمح بالركوب من هنا
-                    </label>
-                    <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
-                      <input
-                        type="checkbox"
-                        checked={station.allowDropoff !== false}
-                        onChange={(e) => setStation(i, 'allowDropoff', e.target.checked)}
-                      />
-                      يسمح بالنزول هنا
-                    </label>
-                  </div>
+              <SectionLabel>مسار الخط على الشوارع</SectionLabel>
+              <div
+                className="rounded-xl p-3 flex flex-col gap-3"
+                style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}
+              >
+                <p className="text-xs leading-6" style={{ color: '#6B7280' }}>
+                  المحطات تظل للركوب والنزول والبحث.
+                  <br />
+                  المسار يرسم الطريق الفعلي على الخريطة كنقاط هندسية مستقلة.
+                </p>
+                <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={() => openMapPicker(i, stationLabel)}
-                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold w-full justify-center transition-opacity hover:opacity-80"
-                    style={{ backgroundColor: hasCoords ? '#D1FAE5' : '#FEF3C7', color: hasCoords ? '#065F46' : '#92400E' }}
+                    onClick={() => setGeometryEditorOpen(true)}
+                    className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
+                    style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }}
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z" /><circle cx="12" cy="10" r="3" />
-                    </svg>
-                    {hasCoords ? `📍 ${Number(station.lat).toFixed(4)}, ${Number(station.lng).toFixed(4)}` : 'اختر من الخريطة'}
+                    {form.geometry?.length ? 'تعديل المسار على الخريطة' : 'رسم المسار على الخريطة'}
+                  </button>
+                  <button
+                    onClick={() => set('geometry', buildGeometryFromStations(form.stations))}
+                    className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
+                    style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+                  >
+                    أنشئ المسار من المحطات
+                  </button>
+                  <button
+                    onClick={() => set('geometry', [])}
+                    className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
+                    style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
+                  >
+                    مسح المسار
                   </button>
                 </div>
-              )
-            })}
-
-            <button
-              onClick={addStation}
-              className="w-full rounded-xl py-2 text-sm font-semibold border-2 border-dashed hover:opacity-70"
-              style={{ borderColor: '#F4A833', color: '#F4A833' }}
-            >
-              + إضافة محطة
-            </button>
-
-            <SectionLabel>مسار الخط على الشوارع</SectionLabel>
-            <div
-              className="rounded-xl p-3 flex flex-col gap-3"
-              style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}
-            >
-              <p className="text-xs leading-6" style={{ color: '#6B7280' }}>
-                المحطات تظل للركوب والنزول والبحث.
-                <br />
-                المسار يرسم الطريق الفعلي على الخريطة كنقاط هندسية مستقلة.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setGeometryEditorOpen(true)}
-                  className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
-                  style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }}
-                >
-                  {form.geometry?.length ? 'تعديل المسار على الخريطة' : 'رسم المسار على الخريطة'}
-                </button>
-                <button
-                  onClick={() => set('geometry', buildGeometryFromStations(form.stations))}
-                  className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
-                  style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
-                >
-                  أنشئ المسار من المحطات
-                </button>
-                <button
-                  onClick={() => set('geometry', [])}
-                  className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
-                  style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
-                >
-                  مسح المسار
-                </button>
+                <p className="text-xs font-semibold" style={{ color: '#374151' }}>
+                  عدد نقاط المسار الحالية: {form.geometry?.length || 0}
+                </p>
               </div>
-              <p className="text-xs font-semibold" style={{ color: '#374151' }}>
-                عدد نقاط المسار الحالية: {form.geometry?.length || 0}
-              </p>
+
+              {err && <p className="text-sm text-center mt-3" style={{ color: '#DC2626' }}>{err}</p>}
             </div>
           </div>
 
-          {err && <p className="text-sm text-center mt-3" style={{ color: '#DC2626' }}>{err}</p>}
-
-          <div className="flex gap-3 mt-6">
+          <div className="flex gap-3 px-4 py-4 md:px-6 md:py-5" style={{ borderTop: '1px solid #E5E7EB' }}>
             <button onClick={onClose} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>إلغاء</button>
             <button onClick={handleSave} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-bold hover:opacity-80 disabled:opacity-50" style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}>
               {isPending ? 'جاري الحفظ...' : 'حفظ'}
