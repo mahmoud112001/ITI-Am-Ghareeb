@@ -50,8 +50,9 @@ router.delete("/save/:routeId", protect, routesController.unsaveRoute);
 // Protected — remove all saved routes for the authenticated user
 router.delete("/saved/clear", protect, routesController.clearSavedRoutes);
 
-// Protected — find 5 nearest routes from user's current location
-router.get("/near-me", protect, routesController.getNearestRoutes);
+// Public (optional auth) — find 5 nearest routes from user's current location.
+// Anonymous users can use "nearby lines"; if logged in, the search is saved to history.
+router.get("/near-me", optionalProtect, routesController.getNearestRoutes);
 
 // Public — get a single route by routeId string (MUST be last GET)
 router.get("/:routeId", routesController.getRouteById);

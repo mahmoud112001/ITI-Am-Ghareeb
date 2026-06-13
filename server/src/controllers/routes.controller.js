@@ -129,17 +129,28 @@ const clearSavedRoutes = async (req, res, next) => {
 const getNearestRoutes = async (req, res, next) => {
   try {
     const { lat, lng } = req.query;
-    const userCoords =
-      lat && lng
-        ? {
-            lat: Number(lat),
-            lng: Number(lng),
-          }
-        : null;
+    let userCoords = null;
+    if (lat !== undefined && lng !== undefined) {
+      const latNum = Number(lat);
+      const lngNum = Number(lng);
+      const isValid =
+        Number.isFinite(latNum) &&
+        Number.isFinite(lngNum) &&
+        latNum >= -90 &&
+        latNum <= 90 &&
+        lngNum >= -180 &&
+        lngNum <= 180;
+      if (!isValid) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid lat/lng coordinates" });
+      }
+      userCoords = { lat: latNum, lng: lngNum };
+    }
 
     const results = await routesService.findNearestRoutes(
       userCoords,
-      req.user.userId,
+      req.user?.userId || null,
     );
     res.status(200).json({ success: true, results });
   } catch (err) {
