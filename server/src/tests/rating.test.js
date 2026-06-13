@@ -2,7 +2,7 @@ const { MongoMemoryServer } = require('mongodb-memory-server')
 const mongoose = require('mongoose')
 const request = require('supertest')
 const app = require('../../app')
-const { Route, Rating } = require('../models/index.js')
+const { ItineraryRating, Route, Rating } = require('../models/index.js')
 const {
   buildRoutePayloadFromLegacyRoute,
   extractRouteFields,
@@ -53,6 +53,7 @@ afterAll(async () => {
 
 afterEach(async () => {
   await Rating.deleteMany({})
+  await ItineraryRating.deleteMany({})
 })
 
 // ── Submit rating ─────────────────────────────────────────────────────────────
@@ -98,6 +99,62 @@ describe('POST /api/ratings', () => {
       .post('/api/ratings')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ routeId: 'RATING-TEST-01' })
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('POST /api/ratings/itinerary', () => {
+  test('with auth and valid body → 200', async () => {
+    const res = await request(app)
+      .post('/api/ratings/itinerary')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        itineraryId: 'RATING-TEST-01:forward:0:1__RATING-TEST-02:forward:0:1',
+        routeIds: ['RATING-TEST-01'],
+        transferCount: 1,
+        isAccurate: true,
+      })
+
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.rating.isAccurate).toBe(true)
+    expect(res.body.rating.itineraryId).toContain('RATING-TEST-01')
+  })
+
+  test('same user submits itinerary rating again (upsert) → 200, not duplicate error', async () => {
+    const body = {
+      itineraryId: 'RATING-TEST-01:forward:0:1__RATING-TEST-02:forward:0:1',
+      routeIds: ['RATING-TEST-01'],
+      transferCount: 1,
+      isAccurate: true,
+    }
+
+    await request(app)
+      .post('/api/ratings/itinerary')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(body)
+
+    const res = await request(app)
+      .post('/api/ratings/itinerary')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ ...body, isAccurate: false })
+
+    expect(res.status).toBe(200)
+    const count = await ItineraryRating.countDocuments()
+    expect(count).toBe(1)
+    expect(res.body.rating.isAccurate).toBe(false)
+  })
+
+  test('missing routeIds → 400', async () => {
+    const res = await request(app)
+      .post('/api/ratings/itinerary')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        itineraryId: 'RATING-TEST-01:forward:0:1',
+        transferCount: 1,
+        isAccurate: true,
+      })
+
     expect(res.status).toBe(400)
   })
 })

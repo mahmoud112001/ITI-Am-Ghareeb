@@ -1,12 +1,13 @@
 import { Fragment, useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { useQuery, useQueries } from '@tanstack/react-query'
+import { useQueries } from '@tanstack/react-query'
 import { MapContainer, TileLayer, Popup, Polyline, CircleMarker, Marker, useMap } from 'react-leaflet'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ArrowDown, ArrowRightLeft, ArrowUp, Flag, Play } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import api from '../lib/axios'
+import { parseMapLegDescriptors } from '../utils/itineraryMap'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -14,6 +15,66 @@ L.Icon.Default.mergeOptions({
   iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
+
+const LEG_PALETTES = [
+  {
+    main: '#F59E0B',
+    casing: '#9A3412',
+    light: '#FFF7E8',
+    badgeBg: '#FEF3C7',
+    badgeText: '#92400E',
+    badgeBorder: '#F4A833',
+  },
+  {
+    main: '#3B82F6',
+    casing: '#1D4ED8',
+    light: '#EDF5FF',
+    badgeBg: '#DBEAFE',
+    badgeText: '#1E40AF',
+    badgeBorder: '#60A5FA',
+  },
+  {
+    main: '#10B981',
+    casing: '#047857',
+    light: '#ECFDF5',
+    badgeBg: '#D1FAE5',
+    badgeText: '#065F46',
+    badgeBorder: '#34D399',
+  },
+  {
+    main: '#F43F5E',
+    casing: '#BE123C',
+    light: '#FFF1F2',
+    badgeBg: '#FFE4E6',
+    badgeText: '#9F1239',
+    badgeBorder: '#FDA4AF',
+  },
+  {
+    main: '#8B5CF6',
+    casing: '#6D28D9',
+    light: '#F5F3FF',
+    badgeBg: '#EDE9FE',
+    badgeText: '#5B21B6',
+    badgeBorder: '#A78BFA',
+  },
+  {
+    main: '#14B8A6',
+    casing: '#0F766E',
+    light: '#F0FDFA',
+    badgeBg: '#CCFBF1',
+    badgeText: '#115E59',
+    badgeBorder: '#5EEAD4',
+  },
+]
+
+function ordinalLabel(index) {
+  const labels = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة']
+  return labels[index] || `${index + 1}`
+}
+
+function getLegPalette(index) {
+  return LEG_PALETTES[index % LEG_PALETTES.length]
+}
 
 function FitBounds({ coords }) {
   const map = useMap()
@@ -91,45 +152,52 @@ function getPointMarkerStyle({ isEndpoint, isMatchedOrigin, isMatchedDestination
   }
 }
 
-function getMarkerBadge({ isMatchedOrigin, isMatchedDestination, legTitle = null }) {
+function getMarkerBadge({
+  isMatchedOrigin,
+  isMatchedDestination,
+  legTitle = null,
+  palette = getLegPalette(0),
+}) {
   if (isMatchedOrigin) {
     return {
       text: legTitle ? `${legTitle}: ركوب` : 'ركوب',
-      bg: '#FEF3C7',
-      color: '#92400E',
-      border: '#F4A833',
+      bg: palette.badgeBg,
+      color: palette.badgeText,
+      border: palette.badgeBorder,
     }
   }
 
   if (isMatchedDestination) {
     return {
       text: legTitle ? `${legTitle}: نزول` : 'نزول',
-      bg: '#DBEAFE',
-      color: '#1E3A8A',
-      border: '#60A5FA',
+      bg: palette.light,
+      color: palette.casing,
+      border: palette.main,
     }
   }
 
   return null
 }
 
-function getTransferMarkerStyle() {
+function getTransferMarkerStyle(primaryPalette, secondaryPalette) {
   return {
     outerRadius: 13,
     innerRadius: 7,
     outerFill: '#FFF4E6',
-    outerStroke: '#C2410C',
-    innerFill: '#2563EB',
+    outerStroke: primaryPalette.casing,
+    innerFill: primaryPalette.main,
+    innerGradient: `linear-gradient(135deg, ${primaryPalette.main} 0%, ${primaryPalette.main} 48%, ${secondaryPalette.main} 52%, ${secondaryPalette.main} 100%)`,
     innerStroke: '#FFFFFF',
   }
 }
 
-function getTransferBadge() {
+function getTransferBadge(primaryPalette, secondaryPalette, transferIndex) {
   return {
-    text: 'تحويل',
-    bg: '#FFF1E6',
-    color: '#7C2D12',
-    border: '#F59E0B',
+    text: `تحويل ${transferIndex + 1}`,
+    bg: primaryPalette.badgeBg,
+    bgImage: `linear-gradient(135deg, ${primaryPalette.badgeBg} 0%, ${primaryPalette.badgeBg} 48%, ${secondaryPalette.badgeBg} 52%, ${secondaryPalette.badgeBg} 100%)`,
+    color: primaryPalette.badgeText,
+    border: primaryPalette.badgeBorder,
   }
 }
 
@@ -146,6 +214,7 @@ function buildBadgeIcon(badge, offsetY = 24) {
           class="route-map-badge__pill"
           style="
             --badge-bg:${badge.bg};
+            --badge-bg-image:${badge.bgImage || badge.bg};
             --badge-color:${badge.color};
             --badge-border:${badge.border};
           "
@@ -208,7 +277,7 @@ function buildSemanticStationIcon(kind, markerStyle, muted = false) {
           --marker-ring:${markerStyle.outerStroke};
           --marker-core:${markerStyle.innerFill};
           --marker-core-ring:${markerStyle.innerStroke};
-          --marker-gradient:${kind === 'transfer' ? 'linear-gradient(135deg, #F59E0B 0%, #F59E0B 48%, #2563EB 52%, #2563EB 100%)' : markerStyle.innerFill};
+          --marker-gradient:${markerStyle.innerGradient || markerStyle.innerFill};
           --marker-shadow:${muted ? '0 1px 3px rgba(15, 23, 42, 0.10)' : '0 4px 10px rgba(15, 23, 42, 0.18)'};
           --marker-icon-opacity:${muted ? 0.94 : 1};
         "
@@ -344,7 +413,7 @@ function RouteMapStyles() {
           padding: 3px 10px;
           border-radius: 9999px;
           border: 1px solid var(--badge-border);
-          background: var(--badge-bg);
+          background: var(--badge-bg-image);
           color: var(--badge-color);
           font-family: Cairo, sans-serif;
           font-size: 12px;
@@ -362,7 +431,7 @@ function RouteMapStyles() {
           bottom: -6px;
           width: 10px;
           height: 10px;
-          background: var(--badge-bg);
+          background: var(--badge-bg-image);
           border-right: 1px solid var(--badge-border);
           border-bottom: 1px solid var(--badge-border);
           transform: translateX(-50%) rotate(45deg);
@@ -421,18 +490,20 @@ function buildRouteMapState(route, matchedOriginId, matchedDestinationId) {
   const highlightedStationStartIndex = Math.min(matchedOriginStationIndex, matchedDestinationStationIndex)
   const highlightedStationEndIndex = Math.max(matchedOriginStationIndex, matchedDestinationStationIndex)
 
-  const highlightGeometryCoords =
+  const hasMatchedSegment =
     matchedOriginGeometryIndex >= 0 &&
     matchedDestinationGeometryIndex >= 0 &&
     matchedOriginGeometryIndex !== matchedDestinationGeometryIndex
-      ? mapGeometrySlice(highlightedStartIndex, highlightedEndIndex + 1)
-      : []
 
-  const mutedLeadingCoords = highlightGeometryCoords.length >= 2
+  const highlightGeometryCoords = hasMatchedSegment
+    ? mapGeometrySlice(highlightedStartIndex, highlightedEndIndex + 1)
+    : polylineCoords
+
+  const mutedLeadingCoords = hasMatchedSegment
     ? mapGeometrySlice(0, highlightedStartIndex + 1)
     : []
 
-  const mutedTrailingCoords = highlightGeometryCoords.length >= 2
+  const mutedTrailingCoords = hasMatchedSegment
     ? mapGeometrySlice(highlightedEndIndex, geometryPoints.length)
     : []
 
@@ -447,11 +518,42 @@ function buildRouteMapState(route, matchedOriginId, matchedDestinationId) {
     highlightGeometryCoords,
     mutedLeadingCoords,
     mutedTrailingCoords,
-    highlightedStationStartIndex,
-    highlightedStationEndIndex,
+    highlightedStationStartIndex: hasMatchedSegment ? highlightedStationStartIndex : 0,
+    highlightedStationEndIndex: hasMatchedSegment
+      ? highlightedStationEndIndex
+      : Math.max(0, visibleStations.length - 1),
     matchedOriginId,
     matchedDestinationId,
   }
+}
+
+function getStationById(routeState, stationId) {
+  if (!routeState || !stationId) return null
+  return (
+    routeState.validStations.find((station) => String(station._id) === String(stationId))
+    || routeState.visibleStations.find((station) => String(station._id) === String(stationId))
+    || null
+  )
+}
+
+function isStationRelevant(routeState, stationIndex) {
+  if (!routeState) return false
+
+  return (
+    routeState.highlightGeometryCoords.length < 2
+    || (
+      routeState.highlightedStationStartIndex >= 0
+      && routeState.highlightedStationEndIndex >= 0
+      && stationIndex >= routeState.highlightedStationStartIndex
+      && stationIndex <= routeState.highlightedStationEndIndex
+    )
+  )
+}
+
+function formatTransferViewTitle(transferCount) {
+  if (transferCount === 1) return 'رحلة بتحويلة واحدة'
+  if (transferCount === 2) return 'رحلة بتحويلتين'
+  return `رحلة بـ ${transferCount} تحويلات`
 }
 
 function StationList({ routeState, title, badge }) {
@@ -558,11 +660,13 @@ function StationMarker({
   popupNote = null,
   badgeLabel = null,
   badgeOverride = null,
+  palette = getLegPalette(0),
 }) {
   const badge = badgeOverride || getMarkerBadge({
     isMatchedOrigin,
     isMatchedDestination,
     legTitle: badgeLabel,
+    palette,
   })
   const badgeIcon = buildBadgeIcon(badge, markerStyle.outerRadius + 8)
   const semanticMarkerIcon = symbolKind ? buildSemanticStationIcon(symbolKind, markerStyle, isMuted) : null
@@ -627,99 +731,100 @@ function StationMarker({
 export default function MapPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const itineraryType = searchParams.get('itineraryType') || 'direct'
-  const routeId = searchParams.get('routeId')
-  const direction = searchParams.get('direction') || 'forward'
-  const matchedOriginId = searchParams.get('matchedOriginId')
-  const matchedDestinationId = searchParams.get('matchedDestinationId')
-
-  const firstRouteId = searchParams.get('firstRouteId')
-  const firstDirection = searchParams.get('firstDirection') || 'forward'
-  const firstOriginId = searchParams.get('firstOriginId')
-  const firstDestinationId = searchParams.get('firstDestinationId')
-  const secondRouteId = searchParams.get('secondRouteId')
-  const secondDirection = searchParams.get('secondDirection') || 'forward'
-  const secondOriginId = searchParams.get('secondOriginId')
-  const secondDestinationId = searchParams.get('secondDestinationId')
-  const transferFromId = searchParams.get('transferFromId')
-  const transferToId = searchParams.get('transferToId')
-  const isTransferView = itineraryType === 'transfer' && firstRouteId && secondRouteId
+  const legDescriptors = parseMapLegDescriptors(searchParams)
+  const hasLegSelection = legDescriptors.length > 0
+  const isTransferView = legDescriptors.length > 1
 
   const [userLocation, setUserLocation] = useState(null)
   const [locError, setLocError] = useState('')
   const [nearestRoute, setNearestRoute] = useState(null)
 
-  const directRouteQuery = useQuery({
-    queryKey: ['route', routeId, direction],
-    queryFn: () => api.get(`/api/routes/${routeId}`, { params: { direction } }).then((r) => r.data),
-    enabled: !!routeId && !isTransferView,
+  const legRouteQueries = useQueries({
+    queries: legDescriptors.map((leg) => ({
+      queryKey: ['route', leg.routeId, leg.direction],
+      queryFn: () =>
+        api
+          .get(`/api/routes/${leg.routeId}`, { params: { direction: leg.direction } })
+          .then((response) => response.data),
+      enabled: Boolean(leg?.routeId),
+    })),
   })
 
-  const transferRouteQueries = useQueries({
-    queries: [
-      {
-        queryKey: ['route', firstRouteId, firstDirection],
-        queryFn: () => api.get(`/api/routes/${firstRouteId}`, { params: { direction: firstDirection } }).then((r) => r.data),
-        enabled: Boolean(firstRouteId && isTransferView),
-      },
-      {
-        queryKey: ['route', secondRouteId, secondDirection],
-        queryFn: () => api.get(`/api/routes/${secondRouteId}`, { params: { direction: secondDirection } }).then((r) => r.data),
-        enabled: Boolean(secondRouteId && isTransferView),
-      },
-    ],
+  const routeStates = legDescriptors.map((descriptor, index) => {
+    const route = legRouteQueries[index]?.data?.route || null
+    if (!route) return null
+
+    return {
+      ...buildRouteMapState(route, descriptor.originStopId, descriptor.destinationStopId),
+      descriptor,
+      legIndex: index,
+      palette: getLegPalette(index),
+    }
   })
 
-  const route = !isTransferView ? directRouteQuery.data?.route || null : null
-  const directState = route ? buildRouteMapState(route, matchedOriginId, matchedDestinationId) : null
+  const directState = !isTransferView ? routeStates[0] || null : null
+  const hydratedRouteStates = routeStates.filter(Boolean)
+  const transferSteps = routeStates
+    .slice(0, -1)
+    .map((routeState, index) => {
+      const nextRouteState = routeStates[index + 1]
+      if (!routeState || !nextRouteState) return null
 
-  const firstTransferRoute = transferRouteQueries[0]?.data?.route || null
-  const secondTransferRoute = transferRouteQueries[1]?.data?.route || null
-  const firstTransferState = firstTransferRoute
-    ? buildRouteMapState(firstTransferRoute, firstOriginId, firstDestinationId)
-    : null
-  const secondTransferState = secondTransferRoute
-    ? buildRouteMapState(secondTransferRoute, secondOriginId, secondDestinationId)
-    : null
-  const sharedTransferStationId =
-    firstDestinationId && secondOriginId && String(firstDestinationId) === String(secondOriginId)
-      ? String(firstDestinationId)
-      : null
+      const fromStation = getStationById(routeState, routeState.matchedDestinationId)
+      const toStation = getStationById(nextRouteState, nextRouteState.matchedOriginId)
+      if (!fromStation && !toStation) return null
 
-  const transferFromStation = secondTransferState?.validStations.find((station) => String(station._id) === transferToId)
-    || firstTransferState?.validStations.find((station) => String(station._id) === transferFromId)
-    || null
-  const transferToStation = secondTransferState?.validStations.find((station) => String(station._id) === transferToId)
-    || null
+      const sharedStation =
+        fromStation?._id &&
+        toStation?._id &&
+        String(fromStation._id) === String(toStation._id)
 
-  const transferCoords = []
-  if (transferFromStation?.coords?.lat && transferFromStation?.coords?.lng) {
-    transferCoords.push([transferFromStation.coords.lat, transferFromStation.coords.lng])
-  }
-  if (
-    transferToStation?.coords?.lat &&
-    transferToStation?.coords?.lng &&
-    String(transferToStation._id) !== String(transferFromStation?._id)
-  ) {
-    transferCoords.push([transferToStation.coords.lat, transferToStation.coords.lng])
-  }
+      const coords = []
+      if (fromStation?.coords?.lat && fromStation?.coords?.lng) {
+        coords.push([fromStation.coords.lat, fromStation.coords.lng])
+      }
+      if (
+        toStation?.coords?.lat &&
+        toStation?.coords?.lng &&
+        String(toStation._id) !== String(fromStation?._id)
+      ) {
+        coords.push([toStation.coords.lat, toStation.coords.lng])
+      }
+
+      return {
+        index,
+        fromStation,
+        toStation,
+        coords,
+        isSharedStation: Boolean(sharedStation),
+        currentPalette: routeState.palette,
+        nextPalette: nextRouteState.palette,
+      }
+    })
+    .filter(Boolean)
+
+  const sharedTransferRenderKeys = new Map()
+  const sharedTransferSkipKeys = new Set()
+  transferSteps.forEach((step) => {
+    if (!step.isSharedStation || !step.fromStation?._id) return
+
+    const stationId = String(step.fromStation._id)
+    sharedTransferRenderKeys.set(`${step.index}:${stationId}`, step)
+    sharedTransferSkipKeys.add(`${step.index + 1}:${stationId}`)
+  })
 
   const nearestValidStations = nearestRoute ? (nearestRoute.stations || []).filter((s) => s.coords?.lat && s.coords?.lng) : []
   const nearestPolylineCoords = (nearestRoute?.geometryPoints || [])
     .filter((s) => s.coords?.lat && s.coords?.lng)
     .map((s) => [s.coords.lat, s.coords.lng])
 
-  const fitCoords = isTransferView
-    ? [
-        ...(firstTransferState?.polylineCoords || []),
-        ...(secondTransferState?.polylineCoords || []),
-        ...transferCoords,
-      ]
-    : (directState?.polylineCoords || [])
+  const fitCoords = [
+    ...hydratedRouteStates.flatMap((routeState) => routeState.polylineCoords || []),
+    ...transferSteps.flatMap((step) => step.coords || []),
+  ]
 
-  const isLoading = isTransferView
-    ? transferRouteQueries.some((query) => query.isLoading)
-    : directRouteQuery.isLoading
+  const isLoading = legRouteQueries.some((query) => query.isLoading || query.isPending)
+  const visibleRouteIds = new Set(hydratedRouteStates.map((routeState) => routeState.route.routeId))
 
   function handleLocate() {
     setLocError('')
@@ -757,42 +862,59 @@ export default function MapPage() {
           flexShrink: 0,
         }}
       >
-        {isTransferView && firstTransferState && secondTransferState ? (
+        {isTransferView && hydratedRouteStates.length > 0 ? (
           <>
             <div className="p-4" style={{ borderBottom: '1px solid #E5E7EB', backgroundColor: '#FFFBEB' }}>
               <h2 className="font-bold text-base" style={{ color: '#1B2A4A' }}>
-                رحلة بتحويلة واحدة
+                {formatTransferViewTitle(legDescriptors.length - 1)}
               </h2>
               <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
-                {transferFromStation && transferToStation && String(transferFromStation._id) !== String(transferToStation._id)
-                  ? `انزل في ${transferFromStation.nameAr} ثم امشِ إلى ${transferToStation.nameAr}`
-                  : `التحويل عند ${transferFromStation?.nameAr || transferToStation?.nameAr || 'المحطة المشتركة'}`}
+                {legDescriptors.length} ركوبات على الخريطة
               </p>
             </div>
-            <StationList
-              routeState={firstTransferState}
-              title="الركوبة الأولى"
-              badge={{ bg: '#FEF3C7', color: '#92400E' }}
-            />
-            <div className="px-4 py-3" style={{ borderTop: '1px solid #E5E7EB', borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' }}>
-              <p className="text-xs font-bold" style={{ color: '#6B7280' }}>
-                التحويلة
-              </p>
-              <p className="text-sm mt-1" style={{ color: '#1B2A4A' }}>
-                {transferFromStation?.nameAr || transferToStation?.nameAr || 'المحطة المشتركة'}
-              </p>
-            </div>
-            <StationList
-              routeState={secondTransferState}
-              title="الركوبة الثانية"
-              badge={{ bg: '#DBEAFE', color: '#1E40AF' }}
-            />
+            {routeStates.map((routeState, index) => {
+              if (!routeState) return null
+
+              const transferStep = transferSteps.find((step) => step.index === index)
+
+              return (
+                <Fragment key={`${routeState.route.routeId}-${index}`}>
+                  <StationList
+                    routeState={routeState}
+                    title={`الركوبة ${ordinalLabel(index)}`}
+                    badge={{
+                      bg: routeState.palette.badgeBg,
+                      color: routeState.palette.badgeText,
+                    }}
+                  />
+                  {transferStep && (
+                    <div
+                      className="px-4 py-3"
+                      style={{
+                        borderTop: '1px solid #E5E7EB',
+                        borderBottom: '1px solid #E5E7EB',
+                        backgroundColor: '#F9FAFB',
+                      }}
+                    >
+                      <p className="text-xs font-bold" style={{ color: '#6B7280' }}>
+                        التحويلة {transferStep.index + 1}
+                      </p>
+                      <p className="text-sm mt-1" style={{ color: '#1B2A4A' }}>
+                        {transferStep.isSharedStation
+                          ? `التحويل عند ${transferStep.fromStation?.nameAr || transferStep.toStation?.nameAr || 'المحطة المشتركة'}`
+                          : `انزل في ${transferStep.fromStation?.nameAr || 'محطة النزول'} ثم اركب من ${transferStep.toStation?.nameAr || 'محطة الركوب'}`}
+                      </p>
+                    </div>
+                  )}
+                </Fragment>
+              )
+            })}
           </>
         ) : directState ? (
           <StationList
             routeState={directState}
             title={null}
-            badge={{ bg: '#DBEAFE', color: '#1E40AF' }}
+            badge={{ bg: directState.palette.badgeBg, color: directState.palette.badgeText }}
           />
         ) : (
           <div className="p-6 text-center">
@@ -818,260 +940,147 @@ export default function MapPage() {
 
           {fitCoords.length >= 2 && <FitBounds coords={fitCoords} />}
 
-          {!isTransferView && directState?.polylineCoords.length >= 2 && (
-            <RoutePolyline
-              positions={directState.mutedLeadingCoords}
-              palette={{ casing: '#94A3B8', main: '#CBD5E1' }}
-              weight={5}
-              opacity={0.72}
-              muted
-            />
-          )}
+          {hydratedRouteStates.map((routeState) => (
+            <Fragment key={`${routeState.route.routeId}-${routeState.legIndex}`}>
+              {routeState.mutedLeadingCoords.length >= 2 && (
+                <RoutePolyline
+                  positions={routeState.mutedLeadingCoords}
+                  palette={{ casing: '#94A3B8', main: '#D1D5DB' }}
+                  weight={5}
+                  opacity={0.7}
+                  muted
+                />
+              )}
+              {routeState.mutedTrailingCoords.length >= 2 && (
+                <RoutePolyline
+                  positions={routeState.mutedTrailingCoords}
+                  palette={{ casing: '#94A3B8', main: '#D1D5DB' }}
+                  weight={5}
+                  opacity={0.7}
+                  muted
+                />
+              )}
+              {routeState.highlightGeometryCoords.length === 0 && routeState.polylineCoords.length >= 2 && (
+                <RoutePolyline
+                  positions={routeState.polylineCoords}
+                  palette={{ casing: '#94A3B8', main: '#D1D5DB' }}
+                  weight={5}
+                  opacity={0.7}
+                  muted
+                />
+              )}
+              {routeState.highlightGeometryCoords.length >= 2 && (
+                <RoutePolyline
+                  positions={routeState.highlightGeometryCoords}
+                  palette={{ casing: routeState.palette.casing, main: routeState.palette.main }}
+                  weight={6}
+                  opacity={0.94}
+                />
+              )}
+            </Fragment>
+          ))}
 
-          {!isTransferView && directState?.mutedTrailingCoords.length >= 2 && (
-            <RoutePolyline
-              positions={directState.mutedTrailingCoords}
-              palette={{ casing: '#94A3B8', main: '#CBD5E1' }}
-              weight={5}
-              opacity={0.72}
-              muted
-            />
-          )}
+          {hydratedRouteStates.map((routeState, legIndex) =>
+            routeState.validStations.map((station, stationIndex) => {
+              const stationId = station?._id ? String(station._id) : null
+              const sharedTransferStep = stationId
+                ? sharedTransferRenderKeys.get(`${legIndex}:${stationId}`)
+                : null
 
-          {!isTransferView && directState?.highlightGeometryCoords.length === 0 && directState?.polylineCoords.length >= 2 && (
-            <RoutePolyline
-              positions={directState.polylineCoords}
-              palette={{ casing: '#94A3B8', main: '#CBD5E1' }}
-              weight={5}
-              opacity={0.72}
-              muted
-            />
-          )}
-
-          {!isTransferView && directState?.highlightGeometryCoords.length >= 2 && (
-            <RoutePolyline
-              positions={directState.highlightGeometryCoords}
-              palette={{ casing: '#B45309', main: '#F59E0B' }}
-              weight={6}
-              opacity={0.94}
-            />
-          )}
-
-          {isTransferView && firstTransferState?.polylineCoords.length >= 2 && (
-            <RoutePolyline
-              positions={firstTransferState.mutedLeadingCoords}
-              palette={{ casing: '#94A3B8', main: '#D1D5DB' }}
-              weight={5}
-              opacity={0.7}
-              muted
-            />
-          )}
-          {isTransferView && firstTransferState?.mutedTrailingCoords.length >= 2 && (
-            <RoutePolyline
-              positions={firstTransferState.mutedTrailingCoords}
-              palette={{ casing: '#94A3B8', main: '#D1D5DB' }}
-              weight={5}
-              opacity={0.7}
-              muted
-            />
-          )}
-          {isTransferView && secondTransferState?.polylineCoords.length >= 2 && (
-            <RoutePolyline
-              positions={secondTransferState.mutedLeadingCoords}
-              palette={{ casing: '#94A3B8', main: '#D1D5DB' }}
-              weight={5}
-              opacity={0.7}
-              muted
-            />
-          )}
-          {isTransferView && secondTransferState?.mutedTrailingCoords.length >= 2 && (
-            <RoutePolyline
-              positions={secondTransferState.mutedTrailingCoords}
-              palette={{ casing: '#94A3B8', main: '#D1D5DB' }}
-              weight={5}
-              opacity={0.7}
-              muted
-            />
-          )}
-          {isTransferView && firstTransferState?.highlightGeometryCoords.length >= 2 && (
-            <RoutePolyline
-              positions={firstTransferState.highlightGeometryCoords}
-              palette={{ casing: '#9A3412', main: '#F59E0B' }}
-              weight={6}
-              opacity={0.94}
-            />
-          )}
-          {isTransferView && secondTransferState?.highlightGeometryCoords.length >= 2 && (
-            <RoutePolyline
-              positions={secondTransferState.highlightGeometryCoords}
-              palette={{ casing: '#1D4ED8', main: '#3B82F6' }}
-              weight={6}
-              opacity={0.94}
-            />
-          )}
-
-          {isTransferView && firstTransferState?.highlightGeometryCoords.length === 0 && firstTransferState?.polylineCoords.length >= 2 && (
-            <RoutePolyline
-              positions={firstTransferState.polylineCoords}
-              palette={{ casing: '#94A3B8', main: '#D1D5DB' }}
-              weight={5}
-              opacity={0.7}
-              muted
-            />
-          )}
-
-          {isTransferView && secondTransferState?.highlightGeometryCoords.length === 0 && secondTransferState?.polylineCoords.length >= 2 && (
-            <RoutePolyline
-              positions={secondTransferState.polylineCoords}
-              palette={{ casing: '#94A3B8', main: '#D1D5DB' }}
-              weight={5}
-              opacity={0.7}
-              muted
-            />
-          )}
-
-          {!isTransferView && directState?.validStations.map((s, i) => {
-            const stationId = s?._id ? String(s._id) : null
-            const isFirst = stationId === directState.firstValidStationId
-            const isLast = stationId === directState.lastValidStationId
-            const isEndpoint = isFirst || isLast
-            const isMatchedOrigin = matchedOriginId && stationId === matchedOriginId
-            const isMatchedDestination = matchedDestinationId && stationId === matchedDestinationId
-            const isMatched = isMatchedOrigin || isMatchedDestination
-            const isRelevantStation =
-              directState.highlightGeometryCoords.length < 2
-              || (
-                directState.highlightedStationStartIndex >= 0
-                && directState.highlightedStationEndIndex >= 0
-                && i >= directState.highlightedStationStartIndex
-                && i <= directState.highlightedStationEndIndex
-              )
-            const markerStyle = getPointMarkerStyle({
-              isEndpoint,
-              isMatchedOrigin,
-              isMatchedDestination,
-              muted: !isRelevantStation,
-            })
-            const symbolKind = isMatchedOrigin
-              ? 'pickup'
-              : isMatchedDestination
-                ? 'dropoff'
-                : isFirst
-                  ? 'start'
-                  : isLast
-                    ? 'end'
-                    : null
-
-            return (
-              <StationMarker
-                key={i}
-                station={s}
-                markerStyle={markerStyle}
-                isMatchedOrigin={isMatchedOrigin}
-                isMatchedDestination={isMatchedDestination}
-                isMatched={isMatched}
-                isMuted={!isRelevantStation}
-                symbolKind={symbolKind}
-                popupNote={
-                  isMatchedOrigin
-                    ? 'نقطة الركوب المطلوبة'
-                    : isMatchedDestination
-                      ? 'نقطة النزول المطلوبة'
-                      : isEndpoint
-                        ? (i === 0 ? 'بداية الخط' : 'نهاية الخط')
-                        : null
-                }
-              />
-            )
-          })}
-
-          {isTransferView && [firstTransferState, secondTransferState].filter(Boolean).map((routeState, legIndex) =>
-            routeState.validStations.map((s, i) => {
-              const stationId = s?._id ? String(s._id) : null
-              const isSharedTransferStation = sharedTransferStationId && stationId === sharedTransferStationId
-              if (legIndex === 1 && isSharedTransferStation) {
+              if (stationId && sharedTransferSkipKeys.has(`${legIndex}:${stationId}`)) {
                 return null
               }
 
               const isFirst = stationId === routeState.firstValidStationId
               const isLast = stationId === routeState.lastValidStationId
               const isEndpoint = isFirst || isLast
-              const isMatchedOrigin = routeState.matchedOriginId && stationId === routeState.matchedOriginId
-              const isMatchedDestination = routeState.matchedDestinationId && stationId === routeState.matchedDestinationId
-              const isMatched = isMatchedOrigin || isMatchedDestination
-              const isRelevantStation =
-                routeState.highlightGeometryCoords.length < 2
-                || (
-                  routeState.highlightedStationStartIndex >= 0
-                  && routeState.highlightedStationEndIndex >= 0
-                  && i >= routeState.highlightedStationStartIndex
-                  && i <= routeState.highlightedStationEndIndex
-                )
-              const accent = legIndex === 0 ? '#92400E' : '#1E40AF'
-              const markerStyle = isSharedTransferStation
-                ? getTransferMarkerStyle()
+              const isMatchedOrigin = Boolean(routeState.matchedOriginId && stationId === routeState.matchedOriginId)
+              const isMatchedDestination = Boolean(
+                routeState.matchedDestinationId && stationId === routeState.matchedDestinationId,
+              )
+              const isMatched = isMatchedOrigin || isMatchedDestination || Boolean(sharedTransferStep)
+              const isRelevantStation = isStationRelevant(routeState, stationIndex)
+              const markerStyle = sharedTransferStep
+                ? getTransferMarkerStyle(sharedTransferStep.currentPalette, sharedTransferStep.nextPalette)
                 : getPointMarkerStyle({
                     isEndpoint,
                     isMatchedOrigin,
                     isMatchedDestination,
-                    accent,
+                    accent: routeState.palette.main,
                     muted: !isRelevantStation,
                   })
-              const isTransferStation = legIndex === 0
-                ? stationId === firstDestinationId
-                : stationId === secondOriginId
-              const symbolKind = isSharedTransferStation || isTransferStation
+
+              const symbolKind = sharedTransferStep
                 ? 'transfer'
-                : legIndex === 0 && stationId === firstOriginId
+                : isMatchedOrigin
                   ? 'pickup'
-                  : legIndex === 1 && stationId === secondDestinationId
+                  : isMatchedDestination
                     ? 'dropoff'
                     : isFirst
                       ? 'start'
                       : isLast
                         ? 'end'
                         : null
-              const popupMessage = isTransferStation
-                ? 'نقطة التحويل'
-                : isSharedTransferStation
-                ? 'نقطة التحويل'
-                : legIndex === 0 && stationId === firstOriginId
+
+              const popupMessage = sharedTransferStep
+                ? sharedTransferStep.isSharedStation
+                  ? `تحويل بين الركوبة ${ordinalLabel(legIndex)} والركوبة ${ordinalLabel(legIndex + 1)}`
+                  : 'نقطة التحويل'
+                : isMatchedOrigin && legIndex === 0
                   ? 'نقطة الركوب المطلوبة'
-                  : legIndex === 1 && stationId === secondDestinationId
-                    ? 'نقطة النزول المطلوبة'
-                    : legIndex === 0
-                      ? 'الركوبة الأولى'
-                      : 'الركوبة الثانية'
+                  : isMatchedOrigin
+                    ? 'ركوب بعد التحويل'
+                    : isMatchedDestination && legIndex === routeStates.length - 1
+                      ? 'نقطة النزول المطلوبة'
+                      : isMatchedDestination
+                        ? 'نزول للتحويل'
+                        : isFirst
+                          ? 'بداية الخط'
+                          : isLast
+                            ? 'نهاية الخط'
+                            : `الركوبة ${ordinalLabel(legIndex)}`
 
               return (
                 <StationMarker
-                  key={`${routeState.route.routeId}-${i}`}
-                  station={s}
+                  key={`${routeState.route.routeId}-${stationIndex}`}
+                  station={station}
                   markerStyle={markerStyle}
                   isMatchedOrigin={isMatchedOrigin}
                   isMatchedDestination={isMatchedDestination}
                   isMatched={isMatched}
                   isMuted={!isRelevantStation}
                   symbolKind={symbolKind}
-                  badgeOverride={isSharedTransferStation ? getTransferBadge() : null}
-                  badgeLabel={legIndex === 0 ? 'الأولى' : 'الثانية'}
+                  badgeOverride={
+                    sharedTransferStep
+                      ? getTransferBadge(
+                          sharedTransferStep.currentPalette,
+                          sharedTransferStep.nextPalette,
+                          sharedTransferStep.index,
+                        )
+                      : null
+                  }
+                  badgeLabel={ordinalLabel(legIndex)}
                   popupNote={popupMessage}
+                  palette={routeState.palette}
                 />
               )
             }),
           )}
 
-          {isTransferView && transferCoords.length >= 2 && (
-            <RoutePolyline
-              positions={transferCoords}
-              palette={{ casing: '#64748B', main: '#CBD5E1' }}
-              weight={3}
-              opacity={0.88}
-              dashed
-            />
+          {transferSteps.map((step) =>
+            step.coords.length >= 2 ? (
+              <RoutePolyline
+                key={`transfer-path-${step.index}`}
+                positions={step.coords}
+                palette={{ casing: '#64748B', main: '#CBD5E1' }}
+                weight={3}
+                opacity={0.88}
+                dashed
+              />
+            ) : null,
           )}
 
-          {nearestRoute && (!route || route.routeId !== nearestRoute.routeId) && nearestPolylineCoords.length > 0 && (
+          {nearestRoute && !visibleRouteIds.has(nearestRoute.routeId) && nearestPolylineCoords.length > 0 && (
             <>
               {nearestPolylineCoords.length >= 2 && (
                 <RoutePolyline
@@ -1129,7 +1138,7 @@ export default function MapPage() {
           )}
         </MapContainer>
 
-        {!routeId && !isTransferView && (
+        {!hasLegSelection && (
           <div
             className="absolute inset-0 flex items-center justify-center pointer-events-none"
             style={{ zIndex: 400 }}

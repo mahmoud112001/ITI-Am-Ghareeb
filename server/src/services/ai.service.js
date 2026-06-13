@@ -28,22 +28,44 @@ async function streamTransitAdvice(origin, destination, userMessage, res) {
     const routeResults = await searchRoutes(origin, destination, null, null)
     const itineraries = routeResults.slice(0, 5)
 
+    function formatLeg(leg, index) {
+      return (
+        `الركوبة ${index + 1}: ${leg.route.nameAr}\n` +
+        `من: ${leg.boardAt?.nameAr} إلى: ${leg.alightAt?.nameAr}\n` +
+        `محطات الجزء: ${leg.route.stations.map((s) => s.nameAr).join(' ← ')}\n` +
+        `تعريفة الجزء: ${leg.route.fare?.min ?? 0}–${leg.route.fare?.max ?? 0} جنيه`
+      )
+    }
+
+    function formatTransferWalk(walk, index) {
+      if (!walk) return null
+
+      if (walk.distanceMeters > 0) {
+        return (
+          `التحويل ${index + 1}: انزل في ${walk.from?.nameAr} ثم امشِ إلى ${walk.to?.nameAr} ` +
+          `(${Math.round(walk.distanceMeters)} متر)`
+        )
+      }
+
+      return `التحويل ${index + 1}: التحويل عند ${walk.from?.nameAr || walk.to?.nameAr || 'محطة مشتركة'}`
+    }
+
     // ── Step 2: Build Arabic context string ─────────────────────────────────
     const context =
       itineraries.length > 0
         ? itineraries
             .map((result) => {
               if (result.itineraryType === 'transfer') {
-                const firstLeg = result.legs[0]
-                const secondLeg = result.legs[1]
+                const legsText = result.legs.map(formatLeg).join('\n')
+                const transfersText = (result.transferWalks || [])
+                  .map(formatTransferWalk)
+                  .filter(Boolean)
+                  .join('\n')
+
                 return (
-                  `رحلة بتحويلة واحدة عبر: ${result.transferPlace?.nameAr}\n` +
-                  `الركوبة الأولى: ${firstLeg.route.nameAr}\n` +
-                  `من: ${firstLeg.boardAt?.nameAr} إلى: ${firstLeg.alightAt?.nameAr}\n` +
-                  `محطات الجزء الأول: ${firstLeg.route.stations.map((s) => s.nameAr).join(' ← ')}\n` +
-                  `الركوبة الثانية: ${secondLeg.route.nameAr}\n` +
-                  `من: ${secondLeg.boardAt?.nameAr} إلى: ${secondLeg.alightAt?.nameAr}\n` +
-                  `محطات الجزء الثاني: ${secondLeg.route.stations.map((s) => s.nameAr).join(' ← ')}\n` +
+                  `رحلة بعدد ${result.transferCount} تحويلة\n` +
+                  `${legsText}\n` +
+                  (transfersText ? `${transfersText}\n` : '') +
                   `إجمالي التعريفة: ${result.totalFare?.min ?? 0}–${result.totalFare?.max ?? 0} جنيه`
                 )
               }

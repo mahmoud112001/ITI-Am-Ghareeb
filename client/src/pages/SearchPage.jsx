@@ -1,10 +1,11 @@
 ﻿import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/axios'
 import RouteCard from '../components/RouteCard'
-import TransferRouteCard from '../components/TransferRouteCard'
+import ItineraryCard from '../components/ItineraryCard'
 import RatingModal from '../components/RatingModal'
+import ItineraryRatingModal from '../components/ItineraryRatingModal'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
 import { useAuth } from '../context/AuthContext'
 
@@ -145,6 +146,7 @@ function HistoryIcon() {
 // ── SearchPage ────────────────────────────────────────────────────────────────
 export default function SearchPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const { user } = useAuth()
 
@@ -153,9 +155,14 @@ export default function SearchPage() {
   const [searched, setSearched]       = useState(false)
   const [nearbySearch, setNearbySearch] = useState(false)
   const [ratingRouteId, setRatingRouteId] = useState(null)
+  const [ratingRouteName, setRatingRouteName] = useState(null)
+  const [ratingItinerary, setRatingItinerary] = useState(null)
   const [savedRouteIds, setSavedRouteIds] = useState([])
+  const [savedItineraryIds, setSavedItineraryIds] = useState([])
   const [savingRouteId, setSavingRouteId] = useState(null)
+  const [savingItineraryId, setSavingItineraryId] = useState(null)
   const [justSavedRouteId, setJustSavedRouteId] = useState(null)
+  const [justSavedItineraryId, setJustSavedItineraryId] = useState(null)
   const [originCoords, setOriginCoords] = useState(null)
   const [locationError, setLocationError] = useState('')
 
@@ -167,18 +174,21 @@ export default function SearchPage() {
   })
   const stations = stationsData || []
 
-  const { data: savedRoutesData } = useQuery({
-    queryKey: ['saved-routes'],
-    queryFn:  () => api.get('/api/routes/saved').then((r) => r.data.routes),
+  const { data: savedItemsData } = useQuery({
+    queryKey: ['saved-items'],
+    queryFn:  () => api.get('/api/routes/saved').then((r) => r.data),
     enabled: !!user,
     staleTime: 300000,
   })
 
   useEffect(() => {
-    if (savedRoutesData) {
-      setSavedRouteIds(savedRoutesData.map((route) => route.routeId))
+    if (savedItemsData) {
+      setSavedRouteIds((savedItemsData.routes || []).map((route) => route.routeId))
+      setSavedItineraryIds(
+        (savedItemsData.itineraries || []).map((itinerary) => itinerary.itineraryId),
+      )
     }
-  }, [savedRoutesData])
+  }, [savedItemsData])
 
   // Search query (disabled until user clicks search)
   const { data: results, isFetching, isSuccess } = useQuery({
@@ -207,6 +217,7 @@ export default function SearchPage() {
 
   function handleSearch() {
     if ((!origin.trim() && !originCoords) || !destination.trim()) return
+    setNearbySearch(false)
     setSearched(true)
   }
 
@@ -292,11 +303,46 @@ export default function SearchPage() {
         setJustSavedRouteId(routeId)
         setTimeout(() => setJustSavedRouteId(null), 1000)
       }
+      queryClient.invalidateQueries({ queryKey: ['saved-items'] })
     } catch (err) {
       // ignore errors silently for now
     } finally {
       setTimeout(() => setSavingRouteId(null), 1000)
     }
+  }
+
+  async function handleSaveItinerary(itinerary) {
+    if (!user || !itinerary?.itineraryId) return
+
+    setSavingItineraryId(itinerary.itineraryId)
+
+    try {
+      if (savedItineraryIds.includes(itinerary.itineraryId)) {
+        await api.delete('/api/routes/saved-itineraries', {
+          data: { itineraryId: itinerary.itineraryId },
+        })
+        setSavedItineraryIds((prev) =>
+          prev.filter((savedId) => savedId !== itinerary.itineraryId),
+        )
+      } else {
+        await api.post('/api/routes/saved-itineraries', itinerary)
+        setSavedItineraryIds((prev) =>
+          Array.from(new Set([...prev, itinerary.itineraryId])),
+        )
+        setJustSavedItineraryId(itinerary.itineraryId)
+        setTimeout(() => setJustSavedItineraryId(null), 1000)
+      }
+      queryClient.invalidateQueries({ queryKey: ['saved-items'] })
+    } catch (err) {
+      // ignore errors silently for now
+    } finally {
+      setTimeout(() => setSavingItineraryId(null), 1000)
+    }
+  }
+
+  function handleRateRoute(routeId, routeName = null) {
+    setRatingRouteId(routeId)
+    setRatingRouteName(routeName)
   }
 
   const noResults = isSuccess && results?.length === 0
@@ -431,16 +477,22 @@ export default function SearchPage() {
             </p>
             {results.map((result) =>
               result.itineraryType === 'transfer' ? (
-                <TransferRouteCard
+                <ItineraryCard
                   key={result.itineraryId}
                   itinerary={result}
+                  onRateClick={setRatingItinerary}
+                  onSaveClick={handleSaveItinerary}
+                  onUnsaveClick={handleSaveItinerary}
+                  isSaved={savedItineraryIds.includes(result.itineraryId)}
+                  isSaving={savingItineraryId === result.itineraryId}
+                  isJustSaved={justSavedItineraryId === result.itineraryId}
                 />
               ) : (
                 <RouteCard
                   key={result.route._id || result.route.routeId}
                   route={result.route}
                   accuracyStats={result.accuracyStats}
-                  onRateClick={(id) => setRatingRouteId(id)}
+                  onRateClick={(id) => handleRateRoute(id, result.route.nameAr)}
                   onSaveClick={handleSaveRoute}
                   onUnsaveClick={handleSaveRoute}
                   isSaved={savedRouteIds.includes(result.route.routeId)}
@@ -465,7 +517,7 @@ export default function SearchPage() {
                 key={route._id || route.routeId}
                 route={route}
                 accuracyStats={accuracyStats}
-                onRateClick={(id) => setRatingRouteId(id)}
+                onRateClick={(id) => handleRateRoute(id, route.nameAr)}
                 onSaveClick={handleSaveRoute}
                 onUnsaveClick={handleSaveRoute}
                 isSaved={savedRouteIds.includes(route.routeId)}
@@ -533,8 +585,23 @@ export default function SearchPage() {
       {ratingRouteId && (
         <RatingModal
           routeId={ratingRouteId}
-          onClose={() => setRatingRouteId(null)}
-          onSuccess={() => setRatingRouteId(null)}
+          routeName={ratingRouteName}
+          onClose={() => {
+            setRatingRouteId(null)
+            setRatingRouteName(null)
+          }}
+          onSuccess={() => {
+            setRatingRouteId(null)
+            setRatingRouteName(null)
+          }}
+        />
+      )}
+
+      {ratingItinerary && (
+        <ItineraryRatingModal
+          itinerary={ratingItinerary}
+          onClose={() => setRatingItinerary(null)}
+          onSuccess={() => setRatingItinerary(null)}
         />
       )}
     </div>

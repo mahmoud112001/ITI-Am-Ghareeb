@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { buildMapSearchParamsForLegs } from '../utils/itineraryMap'
 
 // ── Type badge config ─────────────────────────────────────────────────────────
 const TYPE_CONFIG = {
@@ -274,18 +275,15 @@ export default function RouteCard({
           )}
           <button
             onClick={() => {
-              const params = new URLSearchParams({
-                routeId: route.routeId,
-                direction: route.selectedDirection || 'forward',
-              })
-
-              if (route.matchedSegment?.originStopId) {
-                params.set('matchedOriginId', route.matchedSegment.originStopId)
-              }
-
-              if (route.matchedSegment?.destinationStopId) {
-                params.set('matchedDestinationId', route.matchedSegment.destinationStopId)
-              }
+              const params = buildMapSearchParamsForLegs([
+                {
+                  route: {
+                    routeId: route.routeId,
+                    selectedDirection: route.selectedDirection || 'forward',
+                    matchedSegment: route.matchedSegment || null,
+                  },
+                },
+              ])
 
               navigate(`/map?${params.toString()}`)
             }}

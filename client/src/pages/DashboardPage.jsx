@@ -4,7 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
 import RouteCard from '../components/RouteCard'
+import ItineraryCard from '../components/ItineraryCard'
 import RatingModal from '../components/RatingModal'
+import ItineraryRatingModal from '../components/ItineraryRatingModal'
 import api from '../lib/axios'
 
 // ── Relative time ─────────────────────────────────────────────────────────────
@@ -133,22 +135,29 @@ function SearchHistoryTab() {
   )
 }
 
-// ── Saved Routes tab ──────────────────────────────────────────────────────────
-function SavedRoutesTab() {
+// ── Saved Items tab ───────────────────────────────────────────────────────────
+function SavedItemsTab() {
   const queryClient = useQueryClient()
   const [ratingRouteId, setRatingRouteId] = useState(null)
+  const [ratingItinerary, setRatingItinerary] = useState(null)
   const [clearConfirm, setClearConfirm] = useState(false)
   const [clearingAll, setClearingAll] = useState(false)
+  const [pendingRouteId, setPendingRouteId] = useState(null)
+  const [pendingItineraryId, setPendingItineraryId] = useState(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['saved-routes'],
-    queryFn:  () => api.get('/api/routes/saved').then((r) => r.data.routes),
+    queryKey: ['saved-items'],
+    queryFn:  () => api.get('/api/routes/saved').then((r) => r.data),
   })
+
+  const savedRoutes = data?.routes || []
+  const savedItineraries = data?.itineraries || []
+  const hasSavedItems = savedRoutes.length > 0 || savedItineraries.length > 0
 
   if (isLoading) {
     return (
       <div className="flex flex-col gap-4 pt-4">
-        {[1, 2].map((i) => (
+        {[1, 2, 3].map((i) => (
           <div
             key={i}
             className="rounded-2xl h-28 animate-pulse"
@@ -160,25 +169,44 @@ function SavedRoutesTab() {
   }
 
   async function handleUnsaveRoute(routeId) {
-    await api.delete(`/api/routes/save/${routeId}`)
-    queryClient.invalidateQueries({ queryKey: ['saved-routes'] })
+    setPendingRouteId(routeId)
+    try {
+      await api.delete(`/api/routes/save/${routeId}`)
+      queryClient.invalidateQueries({ queryKey: ['saved-items'] })
+    } finally {
+      setPendingRouteId(null)
+    }
+  }
+
+  async function handleUnsaveItinerary(itinerary) {
+    if (!itinerary?.itineraryId) return
+
+    setPendingItineraryId(itinerary.itineraryId)
+    try {
+      await api.delete('/api/routes/saved-itineraries', {
+        data: { itineraryId: itinerary.itineraryId },
+      })
+      queryClient.invalidateQueries({ queryKey: ['saved-items'] })
+    } finally {
+      setPendingItineraryId(null)
+    }
   }
 
   async function handleClearSavedRoutes() {
     setClearingAll(true)
     try {
       await api.delete('/api/routes/saved/clear')
-      queryClient.invalidateQueries({ queryKey: ['saved-routes'] })
+      queryClient.invalidateQueries({ queryKey: ['saved-items'] })
       setClearConfirm(false)
     } finally {
       setClearingAll(false)
     }
   }
 
-  if (!data?.length) {
+  if (!hasSavedItems) {
     return (
       <EmptyState
-        message="مفيش خطوط محفوظة — ابحث وحفظ الخطوط المهمة ليك!"
+        message="مفيش عناصر محفوظة — ابحث واحفظ الرحلات أو الخطوط المهمة ليك!"
         actionLabel="ابحث عن خط"
         actionTo="/search"
       />
@@ -194,12 +222,12 @@ function SavedRoutesTab() {
             className="rounded-xl px-4 py-2 text-sm font-bold transition-opacity hover:opacity-80"
             style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
           >
-            حذف كل الخطوط المحفوظة
+            حذف كل المحفوظات
           </button>
         ) : (
           <div className="rounded-2xl border p-4 text-right" style={{ borderColor: '#FECACA', backgroundColor: '#FFF1F2' }}>
             <p className="text-sm font-semibold mb-3" style={{ color: '#991B1B' }}>
-              هل أنت متأكد أنك تريد حذف كل الخطوط المحفوظة؟
+              هل أنت متأكد أنك تريد حذف كل الخطوط والرحلات المحفوظة؟
             </p>
             <div className="flex gap-2 flex-wrap justify-end">
               <button
@@ -221,22 +249,64 @@ function SavedRoutesTab() {
           </div>
         )}
       </div>
-      {data.map((route) => (
-        <RouteCard
-          key={route._id || route.routeId}
-          route={route}
-          accuracyStats={route.accuracyStats}
-          onRateClick={(id) => setRatingRouteId(id)}
-          onUnsaveClick={handleUnsaveRoute}
-          isSaved
-          compact={false}
-        />
-      ))}
+      {savedItineraries.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <div className="text-right">
+            <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>
+              الرحلات المحفوظة
+            </h3>
+            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
+              الرحلات متعددة الركوبات محفوظة كمسارات كاملة.
+            </p>
+          </div>
+          {savedItineraries.map((itinerary) => (
+            <ItineraryCard
+              key={itinerary.itineraryId}
+              itinerary={itinerary}
+              onRateClick={setRatingItinerary}
+              onUnsaveClick={handleUnsaveItinerary}
+              isSaved
+              isSaving={pendingItineraryId === itinerary.itineraryId}
+            />
+          ))}
+        </section>
+      )}
+      {savedRoutes.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <div className="text-right">
+            <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>
+              الخطوط المحفوظة
+            </h3>
+            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
+              الخطوط المباشرة تظل محفوظة بشكل مستقل.
+            </p>
+          </div>
+          {savedRoutes.map((route) => (
+            <RouteCard
+              key={route._id || route.routeId}
+              route={route}
+              accuracyStats={route.accuracyStats}
+              onRateClick={(id) => setRatingRouteId(id)}
+              onUnsaveClick={handleUnsaveRoute}
+              isSaved
+              isSaving={pendingRouteId === route.routeId}
+              compact={false}
+            />
+          ))}
+        </section>
+      )}
       {ratingRouteId && (
         <RatingModal
           routeId={ratingRouteId}
           onClose={() => setRatingRouteId(null)}
           onSuccess={() => setRatingRouteId(null)}
+        />
+      )}
+      {ratingItinerary && (
+        <ItineraryRatingModal
+          itinerary={ratingItinerary}
+          onClose={() => setRatingItinerary(null)}
+          onSuccess={() => setRatingItinerary(null)}
         />
       )}
     </div>
@@ -273,12 +343,12 @@ export default function DashboardPage() {
               بحثاتي الأخيرة
             </Tab>
             <Tab active={activeTab === 1} onClick={() => setActiveTab(1)}>
-              خطوطي المحفوظة
+              محفوظاتي
             </Tab>
           </div>
 
           <div className="p-5">
-            {activeTab === 0 ? <SearchHistoryTab /> : <SavedRoutesTab />}
+            {activeTab === 0 ? <SearchHistoryTab /> : <SavedItemsTab />}
           </div>
         </div>
       </div>

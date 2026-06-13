@@ -56,12 +56,14 @@ const getHistory = async (req, res, next) => {
 
 /**
  * getSavedRoutes — GET /api/routes/saved (protected)
- * Returns all routes saved by the authenticated user with accuracy stats.
+ * Returns saved routes and saved itineraries for the authenticated user.
  */
 const getSavedRoutes = async (req, res, next) => {
   try {
-    const routes = await routesService.getSavedRoutes(req.user.userId);
-    res.status(200).json({ success: true, routes });
+    const { routes, itineraries } = await routesService.getSavedRoutes(
+      req.user.userId,
+    );
+    res.status(200).json({ success: true, routes, itineraries });
   } catch (err) {
     next(err);
   }
@@ -99,6 +101,18 @@ const saveRoute = async (req, res, next) => {
 };
 
 /**
+ * saveItinerary — POST /api/routes/saved-itineraries (protected)
+ */
+const saveItinerary = async (req, res, next) => {
+  try {
+    const result = await routesService.saveItinerary(req.user.userId, req.body);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * unsaveRoute — DELETE /api/routes/save/:routeId (protected)
  */
 const unsaveRoute = async (req, res, next) => {
@@ -106,6 +120,21 @@ const unsaveRoute = async (req, res, next) => {
     const result = await routesService.unsaveRoute(
       req.user.userId,
       req.params.routeId,
+    );
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * unsaveItinerary — DELETE /api/routes/saved-itineraries (protected)
+ */
+const unsaveItinerary = async (req, res, next) => {
+  try {
+    const result = await routesService.unsaveItinerary(
+      req.user.userId,
+      req.body?.itineraryId,
     );
     res.status(200).json({ success: true, ...result });
   } catch (err) {
@@ -155,7 +184,9 @@ module.exports = {
   getSavedRoutes,
   getRouteById,
   saveRoute,
+  saveItinerary,
   unsaveRoute,
+  unsaveItinerary,
   clearSavedRoutes,
   getNearestRoutes,
 };

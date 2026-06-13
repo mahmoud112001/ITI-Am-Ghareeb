@@ -12,6 +12,14 @@ const ratingSchema = Joi.object({
   comment: Joi.string().max(280).optional().allow(null, ''),
 })
 
+const itineraryRatingSchema = Joi.object({
+  itineraryId: Joi.string().required(),
+  routeIds: Joi.array().items(Joi.string()).min(1).required(),
+  transferCount: Joi.number().integer().min(1).required(),
+  isAccurate: Joi.boolean().required(),
+  comment: Joi.string().max(280).optional().allow(null, ''),
+})
+
 // ── Controller handlers ───────────────────────────────────────────────────────
 
 const submitRating = async (req, res, next) => {
@@ -22,6 +30,23 @@ const submitRating = async (req, res, next) => {
       routeId,
       isAccurate,
       comment
+    )
+    res.status(200).json({ success: true, ...result })
+  } catch (err) {
+    next(err)
+  }
+}
+
+const submitItineraryRating = async (req, res, next) => {
+  try {
+    const { itineraryId, routeIds, transferCount, isAccurate, comment } = req.body
+    const result = await ratingService.submitItineraryRating(
+      req.user.userId,
+      itineraryId,
+      routeIds,
+      transferCount,
+      isAccurate,
+      comment,
     )
     res.status(200).json({ success: true, ...result })
   } catch (err) {
@@ -43,6 +68,7 @@ const getRatingStats = async (req, res, next) => {
 const router = express.Router()
 
 router.post('/', protect, validate(ratingSchema), submitRating)
+router.post('/itinerary', protect, validate(itineraryRatingSchema), submitItineraryRating)
 router.get('/:routeId/stats', getRatingStats)
 
 module.exports = router

@@ -1,25 +1,29 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import api from '../lib/axios'
 
 const MAX_COMMENT = 280
 
-export default function RatingModal({ routeId, routeName = null, onClose, onSuccess }) {
-  const queryClient = useQueryClient()
-  const [selected, setSelected]     = useState(null) // true | false | null
-  const [comment, setComment]       = useState('')
+export default function ItineraryRatingModal({ itinerary, onClose, onSuccess }) {
+  const [selected, setSelected] = useState(null)
+  const [comment, setComment] = useState('')
   const [successMsg, setSuccessMsg] = useState(false)
-  const [apiError, setApiError]     = useState('')
+  const [apiError, setApiError] = useState('')
+
+  const routeIds = Array.from(
+    new Set((itinerary?.legs || []).map((leg) => leg.route?.routeId).filter(Boolean)),
+  )
 
   const mutation = useMutation({
     mutationFn: () =>
-      api.post('/api/ratings', {
-        routeId,
+      api.post('/api/ratings/itinerary', {
+        itineraryId: itinerary.itineraryId,
+        routeIds,
+        transferCount: itinerary.transferCount,
         isAccurate: selected,
         comment: comment.trim() || null,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['ratings', routeId] })
       setSuccessMsg(true)
       setTimeout(() => {
         onSuccess?.()
@@ -36,9 +40,8 @@ export default function RatingModal({ routeId, routeName = null, onClose, onSucc
     mutation.mutate()
   }
 
-  // Close on overlay click
-  function handleOverlayClick(e) {
-    if (e.target === e.currentTarget) onClose()
+  function handleOverlayClick(event) {
+    if (event.target === event.currentTarget) onClose?.()
   }
 
   return (
@@ -48,11 +51,10 @@ export default function RatingModal({ routeId, routeName = null, onClose, onSucc
       onClick={handleOverlayClick}
     >
       <div
-        className="w-full max-w-sm rounded-2xl p-6 relative"
+        className="w-full max-w-md rounded-2xl p-6 relative"
         style={{ backgroundColor: '#FFFFFF', fontFamily: 'Cairo, sans-serif' }}
         dir="rtl"
       >
-        {/* Close button */}
         <button
           onClick={onClose}
           className="absolute top-4 left-4 text-gray-400 hover:text-gray-600 transition-colors"
@@ -64,33 +66,33 @@ export default function RatingModal({ routeId, routeName = null, onClose, onSucc
           </svg>
         </button>
 
-        {/* Title */}
         <h2 className="text-lg font-bold mb-1" style={{ color: '#1B2A4A' }}>
-          قيّم الخط ده
+          قيّم الرحلة دي
         </h2>
+        <p className="text-sm mb-2" style={{ color: '#6B7280' }}>
+          التقييم هنا للرحلة كلها، مش لكل خط لوحده.
+        </p>
         <p className="text-sm mb-5" style={{ color: '#6B7280' }}>
-          {routeName ? `هل معلومات ${routeName} صح ومحدّثة؟` : 'هل المعلومات دي صح ومحدّثة؟'}
+          {itinerary?.legs?.[0]?.boardAt?.nameAr} ← {itinerary?.legs?.[itinerary.legs.length - 1]?.alightAt?.nameAr}
         </p>
 
-        {/* Success state */}
         {successMsg ? (
           <div
             className="rounded-xl py-4 text-center font-bold text-base"
             style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}
           >
-            شكراً على تقييمك! ✓
+            شكراً على تقييم الرحلة! ✓
           </div>
         ) : (
           <>
-            {/* YES / NO toggle */}
             <div className="flex gap-3 mb-5">
               <button
                 onClick={() => setSelected(true)}
                 className="flex-1 rounded-xl py-3 text-sm font-bold border-2 transition-all"
                 style={{
-                  borderColor:     selected === true ? '#16A34A' : '#E5E7EB',
+                  borderColor: selected === true ? '#16A34A' : '#E5E7EB',
                   backgroundColor: selected === true ? '#D1FAE5' : '#FFFFFF',
-                  color:           selected === true ? '#15803D' : '#6B7280',
+                  color: selected === true ? '#15803D' : '#6B7280',
                 }}
               >
                 نعم ✓
@@ -99,31 +101,30 @@ export default function RatingModal({ routeId, routeName = null, onClose, onSucc
                 onClick={() => setSelected(false)}
                 className="flex-1 rounded-xl py-3 text-sm font-bold border-2 transition-all"
                 style={{
-                  borderColor:     selected === false ? '#DC2626' : '#E5E7EB',
+                  borderColor: selected === false ? '#DC2626' : '#E5E7EB',
                   backgroundColor: selected === false ? '#FEE2E2' : '#FFFFFF',
-                  color:           selected === false ? '#B91C1C' : '#6B7280',
+                  color: selected === false ? '#B91C1C' : '#6B7280',
                 }}
               >
                 لأ ✗
               </button>
             </div>
 
-            {/* Comment textarea */}
             <div className="mb-5">
               <textarea
                 value={comment}
-                onChange={(e) => setComment(e.target.value.slice(0, MAX_COMMENT))}
+                onChange={(event) => setComment(event.target.value.slice(0, MAX_COMMENT))}
                 rows={4}
                 maxLength={MAX_COMMENT}
-                placeholder="إضافة تعليق — مثلاً: التعريفة اتغيرت أو فيه محطة جديدة (اختياري)"
+                placeholder="إضافة تعليق على الرحلة كلها (اختياري)"
                 className="w-full rounded-xl border-2 px-3 py-2.5 text-sm resize-none outline-none transition-all"
                 style={{
-                  fontFamily:  'Cairo, sans-serif',
+                  fontFamily: 'Cairo, sans-serif',
                   borderColor: '#E5E7EB',
-                  lineHeight:  '1.6',
+                  lineHeight: '1.6',
                 }}
-                onFocus={(e) => (e.target.style.borderColor = '#F4A833')}
-                onBlur={(e)  => (e.target.style.borderColor = '#E5E7EB')}
+                onFocus={(event) => (event.target.style.borderColor = '#F4A833')}
+                onBlur={(event) => (event.target.style.borderColor = '#E5E7EB')}
               />
               <div className="flex justify-end mt-1">
                 <span
@@ -135,23 +136,21 @@ export default function RatingModal({ routeId, routeName = null, onClose, onSucc
               </div>
             </div>
 
-            {/* API error */}
             {apiError && (
               <p className="text-sm text-center mb-3" style={{ color: '#DC2626' }}>
                 {apiError}
               </p>
             )}
 
-            {/* Submit */}
             <button
               onClick={handleSubmit}
               disabled={selected === null || mutation.isPending}
               className="w-full rounded-xl py-3 text-base font-bold transition-all flex items-center justify-center gap-2"
               style={{
                 backgroundColor: '#F4A833',
-                color:           '#1B2A4A',
-                opacity:         selected === null || mutation.isPending ? 0.5 : 1,
-                cursor:          selected === null ? 'not-allowed' : 'pointer',
+                color: '#1B2A4A',
+                opacity: selected === null || mutation.isPending ? 0.5 : 1,
+                cursor: selected === null ? 'not-allowed' : 'pointer',
               }}
             >
               {mutation.isPending ? (
