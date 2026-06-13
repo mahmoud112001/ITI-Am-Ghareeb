@@ -178,7 +178,7 @@ describe('POST /api/ai/ask', () => {
     expect(res.headers['content-type']).toMatch(/text\/event-stream/)
   })
 
-  test('valid request → DB query runs with correct filters', async () => {
+  test('valid request → route search loads active routes only', async () => {
     const routeFindSpy = jest.spyOn(Route, 'find')
 
     await request(app)
@@ -190,7 +190,6 @@ describe('POST /api/ai/ask', () => {
     const callArgs =
       routeFindSpy.mock.calls[routeFindSpy.mock.calls.length - 1][0]
     expect(callArgs).toHaveProperty('isActive', true)
-    expect(callArgs.stops || callArgs.$and).toBeDefined()
 
     routeFindSpy.mockRestore()
   })
@@ -210,7 +209,7 @@ describe('POST /api/ai/ask', () => {
     expect(systemMessage.content).toContain('خط:')
   })
 
-  test('transfer request → context includes transfer itinerary details', async () => {
+  test('transfer request → context includes transfer travelPlan details', async () => {
     mockCreate.mockClear()
 
     await request(app)
@@ -225,7 +224,7 @@ describe('POST /api/ai/ask', () => {
     expect(mockCreate).toHaveBeenCalled()
     const callArgs = mockCreate.mock.calls[mockCreate.mock.calls.length - 1][0]
     const systemMessage = callArgs.messages.find((m) => m.role === 'system')
-    expect(systemMessage.content).toContain('رحلة بتحويلة واحدة')
+    expect(systemMessage.content).toContain('رحلة بعدد 1 تحويلة')
     expect(systemMessage.content).toContain('سيدي جابر')
   })
 })

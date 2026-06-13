@@ -1,6 +1,14 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
-const { Route, User } = require("../models/index");
+const {
+  Location,
+  Rating,
+  Route,
+  SavedTravelPlan,
+  SearchHistory,
+  TravelPlanRating,
+  User,
+} = require("../models/index");
 const {
   buildRoutePayloadFromLegacyRoute,
   extractRouteFields,
@@ -866,9 +874,22 @@ async function seed() {
     await connectDB();
 
     console.log("جاري حذف البيانات القديمة...");
-    await Route.deleteMany({});
-    await mongoose.connection.collection("locations").deleteMany({});
-    await User.deleteMany({ role: "admin" });
+    await Promise.all([
+      Route.deleteMany({}),
+      Location.deleteMany({}),
+      Rating.deleteMany({}),
+      TravelPlanRating.deleteMany({}),
+      SavedTravelPlan.deleteMany({}),
+      SearchHistory.deleteMany({}),
+      User.deleteMany({ role: "admin" }),
+    ]);
+
+    for (const collectionName of ["itineraryratings", "saveditineraries"]) {
+      const collection = mongoose.connection.collections[collectionName];
+      if (collection) {
+        await collection.deleteMany({});
+      }
+    }
 
     console.log("جاري إضافة الخطوط...");
     const routePayloads = routes.map((route) =>

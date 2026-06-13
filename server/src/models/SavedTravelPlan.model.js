@@ -15,7 +15,7 @@ const SavedLocationSummarySchema = new Schema(
   { _id: false },
 );
 
-const SavedItineraryLegSchema = new Schema(
+const SavedTravelSegmentSchema = new Schema(
   {
     routeId: {
       type: String,
@@ -77,7 +77,7 @@ const SavedFareSchema = new Schema(
   { _id: false },
 );
 
-const SavedItinerarySchema = new Schema(
+const SavedTravelPlanSchema = new Schema(
   {
     user: {
       type: Schema.Types.ObjectId,
@@ -85,7 +85,7 @@ const SavedItinerarySchema = new Schema(
       required: true,
       index: true,
     },
-    itineraryId: {
+    travelPlanId: {
       type: String,
       required: true,
       trim: true,
@@ -105,14 +105,14 @@ const SavedItinerarySchema = new Schema(
         message: "routeIds must contain at least two routes",
       },
     },
-    legs: {
-      type: [SavedItineraryLegSchema],
+    travelSegments: {
+      type: [SavedTravelSegmentSchema],
       required: true,
       validate: {
         validator(value) {
           return Array.isArray(value) && value.length >= 2;
         },
-        message: "legs must contain at least two segments",
+        message: "travelSegments must contain at least two segments",
       },
     },
     transferWalks: {
@@ -132,6 +132,8 @@ const SavedItinerarySchema = new Schema(
   { timestamps: true },
 );
 
-SavedItinerarySchema.index({ user: 1, itineraryId: 1 }, { unique: true });
+SavedTravelPlanSchema.index({ user: 1, travelPlanId: 1 }, { unique: true });
 
-module.exports = mongoose.model("SavedItinerary", SavedItinerarySchema);
+module.exports = mongoose.model("SavedTravelPlan", SavedTravelPlanSchema);
+
+

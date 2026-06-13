@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { buildMapSearchParamsForLegs } from '../utils/itineraryMap'
+import { buildMapSearchParamsForTravelSegments } from '../utils/travelPlanMap'
 
 // ── Type badge config ─────────────────────────────────────────────────────────
 const TYPE_CONFIG = {
@@ -275,7 +275,7 @@ export default function RouteCard({
           )}
           <button
             onClick={() => {
-              const params = buildMapSearchParamsForLegs([
+              const params = buildMapSearchParamsForTravelSegments([
                 {
                   route: {
                     routeId: route.routeId,

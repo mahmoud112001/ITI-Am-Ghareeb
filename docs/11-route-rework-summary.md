@@ -67,15 +67,15 @@ Direct route search now:
 
 ### Transfer Routing
 
-Transfer routing is no longer limited to one handoff. The backend now builds arbitrary ordered leg chains by:
+Transfer routing is no longer limited to one handoff. The backend now builds arbitrary ordered travelSegment chains by:
 
 - indexing active route directions by valid boarding points
-- exploring same-stop and short walking transfers between consecutive legs
-- returning direct itineraries only whenever any direct route exists
-- returning exactly one best one-transfer itinerary only when no direct route exists
-- falling back to exactly one deeper itinerary at the first successful depth from 2-transfer through 5-transfer only when no direct or one-transfer options exist
+- exploring same-stop and short walking transfers between consecutive travelSegments
+- returning direct travelPlans only whenever any direct route exists
+- returning exactly one best one-transfer travelPlan only when no direct route exists
+- falling back to exactly one deeper travelPlan at the first successful depth from 2-transfer through 5-transfer only when no direct or one-transfer options exist
 - stopping at the first deeper transfer depth that yields valid results
-- deduplicating and ranking itineraries by leg span, walking cost, and stable itinerary identity
+- deduplicating and ranking travelPlans by travelSegment span, walking cost, and stable travelPlan identity
 
 ### Current-Location Search
 
@@ -83,13 +83,13 @@ Searching from live coordinates now ranks routes by the nearest valid boarding g
 
 ### Search Output Contract
 
-Public search results now use a unified itinerary contract:
+Public search results now use a unified travelPlan contract:
 
-- direct results still expose `route` for compatibility
-- every result returns `legs[]`
-- each leg includes the matched route DTO, `boardAt`, `alightAt`, and accuracy stats
-- transfer itineraries return `itineraryId`, `transferCount`, `transferWalks[]`, `transferPlaces[]`, `totalFare`, and origin walking-distance metadata when relevant
-- route DTOs still include `stops`, compatibility alias `stations`, `geometry`, `geometryPoints`, `selectedDirection`, and `matchedSegment`
+- direct results still expose `route` for single-route rendering
+- every result returns `travelSegments[]`
+- each travelSegment includes the matched route DTO, `boardAt`, `alightAt`, and accuracy stats
+- transfer travelPlans return `travelPlanId`, `transferCount`, `transferWalks[]`, `transferPlaces[]`, `totalFare`, and origin walking-distance metadata when relevant
+- route DTOs include `stops`, `stations`, `geometry`, `geometryPoints`, `selectedDirection`, and `matchedSegment`
 
 ---
 
@@ -111,15 +111,15 @@ The admin page was upgraded to support:
 Search results now distinguish between:
 
 - direct routes
-- generalized transfer itineraries with any supported leg count
+- generalized transfer travelPlans with any supported travelSegment count
 
-Transfer itineraries now expose the same three actions as direct cards:
+Transfer travelPlans now expose the same three actions as direct cards:
 
 - rate
 - save
 - map
 
-Matched boarding, transfer, and destination stops are highlighted in cards and passed into the map page through the generalized `legs[]` contract.
+Matched boarding, transfer, and destination stops are highlighted in cards and passed into the map page through the generalized `travelSegments[]` contract.
 
 ### Map Rendering
 
@@ -127,18 +127,18 @@ The map page now:
 
 - draws real route geometry instead of connecting stops with a naive straight line
 - supports reverse direction rendering
-- renders dynamic itineraries from `legs[]` instead of hardcoded first-leg/second-leg params
-- highlights only the traveled segment for each leg and grays out irrelevant path portions
+- renders dynamic travelPlans from `travelSegments[]` instead of hardcoded first-travelSegment/second-travelSegment params
+- highlights only the traveled segment for each travelSegment and grays out irrelevant path portions
 - collapses shared transfer pickup/dropoff points into one switch marker with mixed route colors
 - keeps user-visible stops and route geometry separated cleanly
 
-### Search Actions for Itineraries
+### Search Actions for Travel Plans
 
-Multi-leg results now support the missing UI and API needed to behave like first-class search results:
+Multi-travelSegment results now support the missing UI and API needed to behave like first-class search results:
 
-- save and unsave transfer itineraries as first-class journeys
-- itinerary-level rating flow for transfer results without affecting per-route accuracy stats
-- map navigation for any itinerary length
+- save and unsave transfer travelPlans as first-class journeys
+- travelPlan-level rating flow for transfer results without affecting per-route accuracy stats
+- map navigation for any travelPlan length
 
 ---
 
@@ -186,17 +186,17 @@ Before review, the branch was hardened with the following fixes:
 - Route updates now check `routeId` uniqueness before save.
 - Duplicate-key handling now returns route-specific conflict messages instead of email-only wording.
 
-### Itinerary Action API Support
+### Travel Plan Action API Support
 
-- Added protected saved-itinerary endpoints so transfer journeys are stored and restored as complete itineraries rather than loose saved route legs.
+- Added protected saved-travelPlan endpoints so transfer journeys are stored and restored as complete travelPlans rather than loose saved route travelSegments.
 
 ### AI Transit Context
 
-- AI route advice now formats transfer results from `legs[]` and `transferWalks[]` instead of assuming exactly two legs.
+- AI route advice now formats transfer results from `travelSegments[]` and `transferWalks[]` instead of assuming exactly two travelSegments.
 
-### Transfer-Itinerary Rating Semantics
+### Transfer Travel-Plan Rating Semantics
 
-- Transfer-result ratings are now stored as itinerary-level feedback, separate from route accuracy ratings.
+- Transfer-result ratings are now stored as travelPlan-level feedback, separate from route accuracy ratings.
 
 ---
 
@@ -207,10 +207,10 @@ The branch updated backend tests to cover the reworked routing behavior, includi
 - direct search with ordered-stop validation
 - reverse-direction behavior
 - direct routes suppress one-transfer alternatives when both exist
-- one-transfer fallback returns only the single best itinerary
-- multi-leg itinerary generation
-- fallback-depth behavior through deeper transfer counts with a single best deeper itinerary
-- first-class saved-itinerary endpoints and hydration
+- one-transfer fallback returns only the single best travelPlan
+- multi-travelSegment travelPlan generation
+- fallback-depth behavior through deeper transfer counts with a single best deeper travelPlan
+- first-class saved-travelPlan endpoints and hydration
 - pickup/dropoff constraints
 - geometry reversal in route detail responses
 - active-only station autocomplete
@@ -228,9 +228,9 @@ The branch updated backend tests to cover the reworked routing behavior, includi
 | Admin backend | `server/src/routes/admin.routes.js`, `server/src/routes/admin.stats.routes.js`, `server/src/services/admin.service.js` |
 | AI context | `server/src/services/ai.service.js` |
 | Admin UI | `client/src/pages/AdminPage.jsx`, `client/src/services/admin.service.js`, `client/src/hooks/useAdminRoutes.js` |
-| Search and cards | `client/src/pages/SearchPage.jsx`, `client/src/pages/DashboardPage.jsx`, `client/src/components/RouteCard.jsx`, `client/src/components/ItineraryCard.jsx`, `client/src/components/ItineraryRatingModal.jsx` |
+| Search and cards | `client/src/pages/SearchPage.jsx`, `client/src/pages/DashboardPage.jsx`, `client/src/components/RouteCard.jsx`, `client/src/components/TravelPlanCard.jsx`, `client/src/components/TravelPlanRatingModal.jsx` |
 | Map page | `client/src/pages/MapPage.jsx` |
-| Itinerary map contract | `client/src/utils/itineraryMap.js` |
+| Travel plan map contract | `client/src/utils/travelPlanMap.js` |
 | Tests and seed | `server/src/tests/*.test.js`, `server/src/scripts/seed.js` |
 
 ---
@@ -241,7 +241,7 @@ Validation performed after the branch fixes:
 
 - frontend production build passes
 - backend Jest command runs from the standard `npm test` script
-- route search tests cover direct-priority behavior, one-transfer fallback, and deeper multi-leg fallback behavior
+- route search tests cover direct-priority behavior, one-transfer fallback, and deeper multi-travelSegment fallback behavior
 - auth, routes, admin, AI, rating, and model tests pass
 
 This branch is now documented as a completed implementation summary rather than a planning or audit trail.

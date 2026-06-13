@@ -1,4 +1,4 @@
-const { ItineraryRating, Rating, Route } = require('../models/index.js')
+const { TravelPlanRating, Rating, Route } = require('../models/index.js')
 
 /**
  * submitRating — creates or updates a user's rating for a route.
@@ -21,12 +21,12 @@ async function submitRating(userId, routeId, isAccurate, comment = null) {
 }
 
 /**
- * submitItineraryRating — creates or updates a user's rating for a transfer itinerary.
+ * submitTravelPlanRating — creates or updates a user's rating for a transfer travelPlan.
  * Stores journey-level feedback without affecting per-route accuracy stats.
  */
-async function submitItineraryRating(
+async function submitTravelPlanRating(
   userId,
-  itineraryId,
+  travelPlanId,
   routeIds,
   transferCount,
   isAccurate,
@@ -40,7 +40,7 @@ async function submitItineraryRating(
     ),
   )
 
-  if (!itineraryId || !normalizedRouteIds.length) {
+  if (!travelPlanId || !normalizedRouteIds.length) {
     throw { statusCode: 400, message: 'بيانات الرحلة غير مكتملة' }
   }
 
@@ -53,10 +53,10 @@ async function submitItineraryRating(
     throw { statusCode: 404, message: 'بعض خطوط الرحلة غير موجودة' }
   }
 
-  const rating = await ItineraryRating.findOneAndUpdate(
-    { user: userId, itineraryId },
+  const rating = await TravelPlanRating.findOneAndUpdate(
+    { user: userId, travelPlanId },
     {
-      itineraryId,
+      travelPlanId,
       routeIds: normalizedRouteIds,
       transferCount,
       isAccurate,
@@ -77,4 +77,4 @@ async function getRatingStats(routeId) {
   return Route.getAccuracyStats(routeId)
 }
 
-module.exports = { submitRating, submitItineraryRating, getRatingStats }
+module.exports = { submitRating, submitTravelPlanRating, getRatingStats }

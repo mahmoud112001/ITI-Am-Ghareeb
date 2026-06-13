@@ -56,14 +56,14 @@ const getHistory = async (req, res, next) => {
 
 /**
  * getSavedRoutes — GET /api/routes/saved (protected)
- * Returns saved routes and saved itineraries for the authenticated user.
+ * Returns saved routes and saved travelPlans for the authenticated user.
  */
 const getSavedRoutes = async (req, res, next) => {
   try {
-    const { routes, itineraries } = await routesService.getSavedRoutes(
+    const { routes, travelPlans } = await routesService.getSavedRoutes(
       req.user.userId,
     );
-    res.status(200).json({ success: true, routes, itineraries });
+    res.status(200).json({ success: true, routes, travelPlans });
   } catch (err) {
     next(err);
   }
@@ -101,11 +101,11 @@ const saveRoute = async (req, res, next) => {
 };
 
 /**
- * saveItinerary — POST /api/routes/saved-itineraries (protected)
+ * saveTravelPlan — POST /api/routes/saved-travel-plans (protected)
  */
-const saveItinerary = async (req, res, next) => {
+const saveTravelPlan = async (req, res, next) => {
   try {
-    const result = await routesService.saveItinerary(req.user.userId, req.body);
+    const result = await routesService.saveTravelPlan(req.user.userId, req.body);
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     next(err);
@@ -128,13 +128,13 @@ const unsaveRoute = async (req, res, next) => {
 };
 
 /**
- * unsaveItinerary — DELETE /api/routes/saved-itineraries (protected)
+ * unsaveTravelPlan — DELETE /api/routes/saved-travel-plans (protected)
  */
-const unsaveItinerary = async (req, res, next) => {
+const unsaveTravelPlan = async (req, res, next) => {
   try {
-    const result = await routesService.unsaveItinerary(
+    const result = await routesService.unsaveTravelPlan(
       req.user.userId,
-      req.body?.itineraryId,
+      req.body?.travelPlanId,
     );
     res.status(200).json({ success: true, ...result });
   } catch (err) {
@@ -184,9 +184,9 @@ module.exports = {
   getSavedRoutes,
   getRouteById,
   saveRoute,
-  saveItinerary,
+  saveTravelPlan,
   unsaveRoute,
-  unsaveItinerary,
+  unsaveTravelPlan,
   clearSavedRoutes,
   getNearestRoutes,
 };

@@ -4,7 +4,7 @@ const request = require("supertest");
 const app = require("../../app");
 const {
   Route,
-  SavedItinerary,
+  SavedTravelPlan,
   User,
   SearchHistory,
 } = require("../models/index.js");
@@ -143,7 +143,7 @@ afterAll(async () => {
 
 afterEach(async () => {
   await SearchHistory.deleteMany({});
-  await SavedItinerary.deleteMany({});
+  await SavedTravelPlan.deleteMany({});
   await User.findByIdAndUpdate(userId, { savedRoutes: [] });
 });
 
@@ -293,7 +293,7 @@ describe("GET /api/routes/search", () => {
     });
   });
 
-  test("returns one-transfer itinerary when no direct route exists", async () => {
+  test("returns one-transfer travelPlan when no direct route exists", async () => {
     await seedLegacyRoute({
       routeId: "TEST-TRANSFER-01",
       type: "microbus",
@@ -370,13 +370,13 @@ describe("GET /api/routes/search", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.results).toHaveLength(1);
-    expect(res.body.results[0].itineraryType).toBe("transfer");
+    expect(res.body.results[0].travelPlanType).toBe("transfer");
     expect(res.body.results[0].transferCount).toBe(1);
     expect(res.body.results[0].transferPlace.nameAr).toBe("سيدي جابر");
     expect(res.body.results[0].totalFare.min).toBe(11);
-    expect(res.body.results[0].legs).toHaveLength(2);
-    expect(res.body.results[0].legs[0].route.routeId).toBe("TEST-TRANSFER-01");
-    expect(res.body.results[0].legs[1].route.routeId).toBe("TEST-TRANSFER-02");
+    expect(res.body.results[0].travelSegments).toHaveLength(2);
+    expect(res.body.results[0].travelSegments[0].route.routeId).toBe("TEST-TRANSFER-01");
+    expect(res.body.results[0].travelSegments[1].route.routeId).toBe("TEST-TRANSFER-02");
   });
 
   test("returns direct routes only when direct and one-transfer options both exist", async () => {
@@ -460,11 +460,11 @@ describe("GET /api/routes/search", () => {
     expect(res.status).toBe(200);
     expect(res.body.results.length).toBeGreaterThanOrEqual(1);
     expect(
-      res.body.results.every((result) => result.itineraryType === "direct"),
+      res.body.results.every((result) => result.travelPlanType === "direct"),
     ).toBe(true);
   });
 
-  test("returns only the single best one-transfer itinerary when no direct route exists", async () => {
+  test("returns only the single best one-transfer travelPlan when no direct route exists", async () => {
     await seedLegacyRoute({
       routeId: "TEST-LIMIT-FIRST-01",
       type: "microbus",
@@ -618,12 +618,12 @@ describe("GET /api/routes/search", () => {
     expect(res.body.results).toHaveLength(1);
     expect(
       res.body.results.every(
-        (result) => result.itineraryType === "transfer" && result.transferCount === 1,
+        (result) => result.travelPlanType === "transfer" && result.transferCount === 1,
       ),
     ).toBe(true);
   });
 
-  test("falls back to deeper multi-leg itineraries only when direct and one-transfer options do not exist", async () => {
+  test("falls back to deeper multi-travelSegment travelPlans only when direct and one-transfer options do not exist", async () => {
     await seedLegacyRoute({
       routeId: "TEST-CHAIN-01",
       type: "microbus",
@@ -754,9 +754,9 @@ describe("GET /api/routes/search", () => {
     expect(
       res.body.results.every(
         (result) =>
-          result.itineraryType === "transfer" &&
+          result.travelPlanType === "transfer" &&
           result.transferCount === 2 &&
-          result.legs?.length === 3,
+          result.travelSegments?.length === 3,
       ),
     ).toBe(true);
     expect(
@@ -764,7 +764,7 @@ describe("GET /api/routes/search", () => {
     ).toBe(true);
     expect(
       res.body.results.every((result) =>
-        result.legs.every((leg) => leg.route?.routeId),
+        result.travelSegments.every((travelSegment) => travelSegment.route?.routeId),
       ),
     ).toBe(true);
   });
@@ -1025,13 +1025,13 @@ describe("GET /api/routes/saved", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(Array.isArray(res.body.routes)).toBe(true);
-    expect(Array.isArray(res.body.itineraries)).toBe(true);
+    expect(Array.isArray(res.body.travelPlans)).toBe(true);
     expect(res.body.routes.length).toBe(1);
     expect(res.body.routes[0].routeId).toBe("TEST-MICRO-01");
     expect(res.body.routes[0]).toHaveProperty("accuracyStats");
   });
 
-  test("authenticated with saved itineraries → 200 with hydrated legs", async () => {
+  test("authenticated with saved travelPlans → 200 with hydrated travelSegments", async () => {
     await seedLegacyRoute({
       routeId: "TEST-SAVED-TRANSFER-01",
       type: "microbus",
@@ -1085,28 +1085,28 @@ describe("GET /api/routes/saved", () => {
       .get("/api/routes/search")
       .query({ origin: "بداية الحفظ", destination: "نهاية الحفظ" });
 
-    const itinerary = searchRes.body.results.find(
-      (result) => result.itineraryType === "transfer",
+    const travelPlan = searchRes.body.results.find(
+      (result) => result.travelPlanType === "transfer",
     );
 
     await request(app)
-      .post("/api/routes/saved-itineraries")
+      .post("/api/routes/saved-travel-plans")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send(itinerary);
+      .send(travelPlan);
 
     const res = await request(app)
       .get("/api/routes/saved")
       .set("Authorization", `Bearer ${accessToken}`);
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body.itineraries)).toBe(true);
-    expect(res.body.itineraries).toHaveLength(1);
-    expect(res.body.itineraries[0].itineraryId).toBe(itinerary.itineraryId);
-    expect(res.body.itineraries[0].legs).toHaveLength(2);
-    expect(res.body.itineraries[0].legs[0].route.routeId).toBe(
+    expect(Array.isArray(res.body.travelPlans)).toBe(true);
+    expect(res.body.travelPlans).toHaveLength(1);
+    expect(res.body.travelPlans[0].travelPlanId).toBe(travelPlan.travelPlanId);
+    expect(res.body.travelPlans[0].travelSegments).toHaveLength(2);
+    expect(res.body.travelPlans[0].travelSegments[0].route.routeId).toBe(
       "TEST-SAVED-TRANSFER-01",
     );
-    expect(res.body.itineraries[0].legs[1].route.routeId).toBe(
+    expect(res.body.travelPlans[0].travelSegments[1].route.routeId).toBe(
       "TEST-SAVED-TRANSFER-02",
     );
   });
@@ -1181,8 +1181,8 @@ describe("DELETE /api/routes/save/:routeId", () => {
   });
 });
 
-describe("POST /api/routes/saved-itineraries", () => {
-  test("with auth → 200, transfer itinerary is stored as a first-class saved itinerary", async () => {
+describe("POST /api/routes/saved-travel-plans", () => {
+  test("with auth → 200, transfer travelPlan is stored as a first-class saved travelPlan", async () => {
     await seedLegacyRoute({
       routeId: "TEST-SAVE-FIRST-01",
       type: "microbus",
@@ -1236,37 +1236,37 @@ describe("POST /api/routes/saved-itineraries", () => {
       .get("/api/routes/search")
       .query({ origin: "بداية حفظ أولى", destination: "نهاية حفظ أولى" });
 
-    const itinerary = searchRes.body.results.find(
-      (result) => result.itineraryType === "transfer",
+    const travelPlan = searchRes.body.results.find(
+      (result) => result.travelPlanType === "transfer",
     );
 
     const res = await request(app)
-      .post("/api/routes/saved-itineraries")
+      .post("/api/routes/saved-travel-plans")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send(itinerary);
+      .send(travelPlan);
 
     expect(res.status).toBe(200);
-    expect(res.body.itineraryId).toBe(itinerary.itineraryId);
+    expect(res.body.travelPlanId).toBe(travelPlan.travelPlanId);
 
-    const savedItineraries = await SavedItinerary.find({ user: userId }).lean();
-    expect(savedItineraries).toHaveLength(1);
-    expect(savedItineraries[0].routeIds).toEqual([
+    const savedTravelPlans = await SavedTravelPlan.find({ user: userId }).lean();
+    expect(savedTravelPlans).toHaveLength(1);
+    expect(savedTravelPlans[0].routeIds).toEqual([
       "TEST-SAVE-FIRST-01",
       "TEST-SAVE-FIRST-02",
     ]);
-    expect(savedItineraries[0].legs).toHaveLength(2);
-    expect(savedItineraries[0].transferCount).toBe(1);
+    expect(savedTravelPlans[0].travelSegments).toHaveLength(2);
+    expect(savedTravelPlans[0].transferCount).toBe(1);
   });
 });
 
-describe("DELETE /api/routes/saved-itineraries", () => {
-  test("with auth → 200, saved itinerary is removed without touching saved routes", async () => {
-    await SavedItinerary.create({
+describe("DELETE /api/routes/saved-travel-plans", () => {
+  test("with auth → 200, saved travelPlan is removed without touching saved routes", async () => {
+    await SavedTravelPlan.create({
       user: userId,
-      itineraryId: "manual-itinerary-01",
+      travelPlanId: "manual-travelPlan-01",
       transferCount: 1,
       routeIds: ["TEST-MICRO-01", "TEST-MICRO-02"],
-      legs: [
+      travelSegments: [
         {
           routeId: "TEST-MICRO-01",
           selectedDirection: "forward",
@@ -1286,13 +1286,13 @@ describe("DELETE /api/routes/saved-itineraries", () => {
       .set("Authorization", `Bearer ${accessToken}`);
 
     const res = await request(app)
-      .delete("/api/routes/saved-itineraries")
+      .delete("/api/routes/saved-travel-plans")
       .set("Authorization", `Bearer ${accessToken}`)
-      .send({ itineraryId: "manual-itinerary-01" });
+      .send({ travelPlanId: "manual-travelPlan-01" });
 
     expect(res.status).toBe(200);
-    expect(res.body.itineraryId).toBe("manual-itinerary-01");
-    expect(await SavedItinerary.countDocuments({ user: userId })).toBe(0);
+    expect(res.body.travelPlanId).toBe("manual-travelPlan-01");
+    expect(await SavedTravelPlan.countDocuments({ user: userId })).toBe(0);
 
     const user = await User.findById(userId).populate("savedRoutes");
     expect(user.savedRoutes.map((route) => route.routeId)).toEqual([

@@ -1,5 +1,5 @@
 const {
-  SavedItinerary,
+  SavedTravelPlan,
   Location,
   Route,
   SearchHistory,
@@ -280,31 +280,31 @@ function getTransferBoardOptions(boardIndex, currentLocation) {
   );
 }
 
-function buildRawItineraryId(legs) {
-  return legs
+function buildRawTravelPlanId(travelSegments) {
+  return travelSegments
     .map(
-      (leg) =>
-        `${leg.route.routeId}:${leg.selectedDirection}:${leg.match.originIndex}:${leg.match.destinationIndex}`,
+      (travelSegment) =>
+        `${travelSegment.route.routeId}:${travelSegment.selectedDirection}:${travelSegment.match.originIndex}:${travelSegment.match.destinationIndex}`,
     )
     .join("__");
 }
 
-function sortRawItineraries(a, b) {
-  if (a.legs.length !== b.legs.length) {
-    return a.legs.length - b.legs.length;
+function sortRawTravelPlans(a, b) {
+  if (a.travelSegments.length !== b.travelSegments.length) {
+    return a.travelSegments.length - b.travelSegments.length;
   }
 
   if (a.score !== b.score) {
     return a.score - b.score;
   }
 
-  return buildRawItineraryId(a.legs).localeCompare(buildRawItineraryId(b.legs));
+  return buildRawTravelPlanId(a.travelSegments).localeCompare(buildRawTravelPlanId(b.travelSegments));
 }
 
-function searchItinerariesByLegCount({
+function searchTravelPlansBySegmentCount({
   boardIndex,
   destinationIdSet,
-  exactLegCount,
+  exactTravelSegmentCount,
   originLocationIdSet = null,
   originCoords = null,
 }) {
@@ -325,19 +325,19 @@ function searchItinerariesByLegCount({
       visitedLocationIds: new Set(
         originLocationIdSet ? Array.from(originLocationIdSet) : [],
       ),
-      legs: [],
+      travelSegments: [],
     },
   ];
 
   const results = [];
 
-  for (let legIndex = 0; legIndex < exactLegCount; legIndex += 1) {
-    const isFinalLeg = legIndex === exactLegCount - 1;
+  for (let travelSegmentIndex = 0; travelSegmentIndex < exactTravelSegmentCount; travelSegmentIndex += 1) {
+    const isFinalTravelSegment = travelSegmentIndex === exactTravelSegmentCount - 1;
     const nextStates = [];
     const bestStateScoreByKey = new Map();
 
     for (const state of states) {
-      const boardChoices = state.legs.length === 0
+      const boardChoices = state.travelSegments.length === 0
         ? initialBoardOptions
         : getTransferBoardOptions(boardIndex, state.currentLocation);
 
@@ -348,18 +348,18 @@ function searchItinerariesByLegCount({
         const alightOptions = getDestinationAlightOptions(
           boardChoice.option.variant,
           boardChoice.option.stopIndex,
-          isFinalLeg ? destinationIdSet : null,
+          isFinalTravelSegment ? destinationIdSet : null,
         );
 
         for (const alightOption of alightOptions) {
           if (
-            !isFinalLeg &&
+            !isFinalTravelSegment &&
             state.visitedLocationIds.has(alightOption.locationId)
           ) {
             continue;
           }
 
-          const nextLeg = {
+          const nextTravelSegment = {
             route: boardChoice.option.variant.route,
             selectedDirection: boardChoice.option.variant.selectedDirection,
             match: {
@@ -376,15 +376,15 @@ function searchItinerariesByLegCount({
             alightOption.score +
             boardChoice.walkDistanceMeters / 120;
 
-          if (isFinalLeg) {
+          if (isFinalTravelSegment) {
             results.push({
-              itineraryType: exactLegCount === 1 ? "direct" : "transfer",
+              travelPlanType: exactTravelSegmentCount === 1 ? "direct" : "transfer",
               score: nextScore,
               originWalkDistanceMeters:
-                state.legs.length === 0
+                state.travelSegments.length === 0
                   ? boardChoice.walkDistanceMeters
                   : state.originWalkDistanceMeters,
-              legs: [...state.legs, nextLeg],
+              travelSegments: [...state.travelSegments, nextTravelSegment],
             });
             continue;
           }
@@ -399,20 +399,20 @@ function searchItinerariesByLegCount({
             score: nextScore,
             currentLocation: alightOption.locationSummary,
             originWalkDistanceMeters:
-              state.legs.length === 0
+              state.travelSegments.length === 0
                 ? boardChoice.walkDistanceMeters
                 : state.originWalkDistanceMeters,
             usedRouteIds,
             visitedLocationIds,
-            legs: [...state.legs, nextLeg],
+            travelSegments: [...state.travelSegments, nextTravelSegment],
           };
 
           const stateKey = [
-            legIndex,
+            travelSegmentIndex,
             alightOption.locationId,
             routeId,
-            nextLeg.match.originIndex,
-            nextLeg.match.destinationIndex,
+            nextTravelSegment.match.originIndex,
+            nextTravelSegment.match.destinationIndex,
           ].join(":");
 
           const existingScore = bestStateScoreByKey.get(stateKey);
@@ -431,20 +431,20 @@ function searchItinerariesByLegCount({
       .slice(0, MAX_INTERMEDIATE_STATES);
   }
 
-  const bestByItinerary = new Map();
+  const bestByTravelPlan = new Map();
 
   for (const result of results) {
-    const itineraryKey = buildRawItineraryId(result.legs);
-    const existing = bestByItinerary.get(itineraryKey);
+    const travelPlanKey = buildRawTravelPlanId(result.travelSegments);
+    const existing = bestByTravelPlan.get(travelPlanKey);
     if (!existing || result.score < existing.score) {
-      bestByItinerary.set(itineraryKey, result);
+      bestByTravelPlan.set(travelPlanKey, result);
     }
   }
 
-  return Array.from(bestByItinerary.values()).sort(sortRawItineraries);
+  return Array.from(bestByTravelPlan.values()).sort(sortRawTravelPlans);
 }
 
-function buildLeg(routeDoc, selectedDirection, match, accuracyStats) {
+function buildTravelSegment(routeDoc, selectedDirection, match, accuracyStats) {
   const route = toPublicRoute(routeDoc, { selectedDirection });
   const boardAt = route.stops?.[match?.originIndex ?? 0] || route.origin;
   const alightAt =
@@ -469,28 +469,28 @@ function buildLeg(routeDoc, selectedDirection, match, accuracyStats) {
   };
 }
 
-async function formatDirectResult(legs, originCoords = null, originWalkDistanceMeters = 0) {
-  const [rawLeg] = legs;
-  const accuracyStats = await Route.getAccuracyStats(rawLeg.route.routeId);
-  const leg = buildLeg(
-    rawLeg.route,
-    rawLeg.selectedDirection,
-    rawLeg.match || null,
+async function formatDirectTravelPlanResult(travelSegments, originCoords = null, originWalkDistanceMeters = 0) {
+  const [rawTravelSegment] = travelSegments;
+  const accuracyStats = await Route.getAccuracyStats(rawTravelSegment.route.routeId);
+  const travelSegment = buildTravelSegment(
+    rawTravelSegment.route,
+    rawTravelSegment.selectedDirection,
+    rawTravelSegment.match || null,
     accuracyStats,
   );
-  const route = { ...leg.route };
+  const route = { ...travelSegment.route };
 
   if (originCoords) {
     route.distanceMeters = originWalkDistanceMeters;
   }
 
   return {
-    itineraryType: "direct",
-    itineraryId: buildRawItineraryId(legs),
+    travelPlanType: "direct",
+    travelPlanId: buildRawTravelPlanId(travelSegments),
     transferCount: 0,
     route,
     accuracyStats,
-    legs: [{ ...leg, route }],
+    travelSegments: [{ ...travelSegment, route }],
   };
 }
 
@@ -505,35 +505,35 @@ function mergeFareRanges(firstFare, secondFare) {
   };
 }
 
-async function formatTransferResult(legs, originWalkDistanceMeters = 0) {
+async function formatTransferTravelPlanResult(travelSegments, originWalkDistanceMeters = 0) {
   const accuracyStatsList = await Promise.all(
-    legs.map((leg) => Route.getAccuracyStats(leg.route.routeId)),
+    travelSegments.map((travelSegment) => Route.getAccuracyStats(travelSegment.route.routeId)),
   );
 
-  const formattedLegs = legs.map((leg, index) =>
-    buildLeg(
-      leg.route,
-      leg.selectedDirection,
-      leg.match,
+  const formattedTravelSegments = travelSegments.map((travelSegment, index) =>
+    buildTravelSegment(
+      travelSegment.route,
+      travelSegment.selectedDirection,
+      travelSegment.match,
       accuracyStatsList[index],
     ),
   );
 
   const transferWalks = [];
-  for (let index = 0; index < formattedLegs.length - 1; index += 1) {
-    const fromLeg = formattedLegs[index];
-    const toLeg = formattedLegs[index + 1];
-    const distance = getTransferDistance(fromLeg.alightAt, toLeg.boardAt);
+  for (let index = 0; index < formattedTravelSegments.length - 1; index += 1) {
+    const fromTravelSegment = formattedTravelSegments[index];
+    const toTravelSegment = formattedTravelSegments[index + 1];
+    const distance = getTransferDistance(fromTravelSegment.alightAt, toTravelSegment.boardAt);
 
     transferWalks.push({
-      from: summarizeLocation(fromLeg.alightAt),
-      to: summarizeLocation(toLeg.boardAt),
+      from: summarizeLocation(fromTravelSegment.alightAt),
+      to: summarizeLocation(toTravelSegment.boardAt),
       distanceMeters: distance == null ? 0 : distance,
     });
   }
 
-  const totalFare = formattedLegs.reduce(
-    (carry, leg) => mergeFareRanges(carry, leg.route.fare),
+  const totalFare = formattedTravelSegments.reduce(
+    (carry, travelSegment) => mergeFareRanges(carry, travelSegment.route.fare),
     null,
   );
   const transferPlaces = transferWalks.map((walk) =>
@@ -541,16 +541,16 @@ async function formatTransferResult(legs, originWalkDistanceMeters = 0) {
   );
 
   return {
-    itineraryType: "transfer",
-    itineraryId: buildRawItineraryId(legs),
-    transferCount: Math.max(0, formattedLegs.length - 1),
+    travelPlanType: "transfer",
+    travelPlanId: buildRawTravelPlanId(travelSegments),
+    transferCount: Math.max(0, formattedTravelSegments.length - 1),
     transferPlace: transferPlaces[0] || null,
     transferPlaces,
     transferWalk: transferWalks[0] || null,
     transferWalks,
     originWalkDistanceMeters,
     totalFare,
-    legs: formattedLegs,
+    travelSegments: formattedTravelSegments,
   };
 }
 
@@ -578,11 +578,11 @@ function normalizeFare(fare) {
   };
 }
 
-function getLegRouteIds(legs = []) {
+function getTravelSegmentRouteIds(travelSegments = []) {
   return Array.from(
     new Set(
-      legs
-        .map((leg) => String(leg?.route?.routeId || leg?.routeId || "").trim())
+      travelSegments
+        .map((travelSegment) => String(travelSegment?.route?.routeId || travelSegment?.routeId || "").trim())
         .filter(Boolean),
     ),
   );
@@ -609,7 +609,7 @@ async function searchRoutes(
   const useLocationSearch =
     originCoords && originCoords.lat != null && originCoords.lng != null;
 
-  let itineraryMatches = [];
+  let travelPlanMatches = [];
 
   if (useLocationSearch && !normalizedDestination) {
     throw { statusCode: 400, message: "يرجى إدخال الوجهة" };
@@ -641,30 +641,30 @@ async function searchRoutes(
     originCoords: useLocationSearch ? originCoords : null,
   };
 
-  const directMatches = searchItinerariesByLegCount({
+  const directMatches = searchTravelPlansBySegmentCount({
     ...searchOptions,
-    exactLegCount: 1,
+    exactTravelSegmentCount: 1,
   });
-  const oneTransferMatches = searchItinerariesByLegCount({
+  const oneTransferMatches = searchTravelPlansBySegmentCount({
     ...searchOptions,
-    exactLegCount: 2,
+    exactTravelSegmentCount: 2,
   });
 
   if (directMatches.length) {
-    itineraryMatches = directMatches.sort(sortRawItineraries);
+    travelPlanMatches = directMatches.sort(sortRawTravelPlans);
   } else if (oneTransferMatches.length) {
-    itineraryMatches = oneTransferMatches
+    travelPlanMatches = oneTransferMatches
       .slice(0, MAX_ONE_TRANSFER_FALLBACK_RESULTS)
-      .sort(sortRawItineraries);
+      .sort(sortRawTravelPlans);
   } else {
     for (let transferCount = 2; transferCount <= MAX_TRANSFER_SEARCH_DEPTH; transferCount += 1) {
-      const exactMatches = searchItinerariesByLegCount({
+      const exactMatches = searchTravelPlansBySegmentCount({
         ...searchOptions,
-        exactLegCount: transferCount + 1,
+        exactTravelSegmentCount: transferCount + 1,
       });
 
       if (exactMatches.length) {
-        itineraryMatches = exactMatches.slice(0, MAX_DEEP_FALLBACK_RESULTS);
+        travelPlanMatches = exactMatches.slice(0, MAX_DEEP_FALLBACK_RESULTS);
         break;
       }
     }
@@ -677,20 +677,20 @@ async function searchRoutes(
         ? normalizedOrigin || "موقعي الحالي"
         : normalizedOrigin,
       destinationQuery: normalizedDestination,
-      routesFound: itineraryMatches.length,
+      routesFound: travelPlanMatches.length,
     });
   }
 
   const results = await Promise.all(
-    itineraryMatches.map((match) => {
-      if (match.legs.length > 1) {
-        return formatTransferResult(
-          match.legs,
+    travelPlanMatches.map((match) => {
+      if (match.travelSegments.length > 1) {
+        return formatTransferTravelPlanResult(
+          match.travelSegments,
           match.originWalkDistanceMeters || 0,
         );
       }
-      return formatDirectResult(
-        match.legs,
+      return formatDirectTravelPlanResult(
+        match.travelSegments,
         useLocationSearch ? originCoords : null,
         match.originWalkDistanceMeters || 0,
       );
@@ -730,11 +730,11 @@ async function findNearestRoutes(userCoords, userId = null) {
         };
 
         return {
-          itineraryType: "direct",
+          travelPlanType: "direct",
           transferCount: 0,
           route,
           accuracyStats,
-          legs: [
+          travelSegments: [
             {
               route,
               accuracyStats,
@@ -810,13 +810,13 @@ async function saveRoute(userId, routeId) {
   return { message: "تم حفظ الخط ✓" };
 }
 
-async function saveItinerary(userId, itinerary = {}) {
-  const normalizedItineraryId = String(itinerary?.itineraryId || "").trim();
-  const normalizedTransferCount = Number(itinerary?.transferCount || 0);
-  const normalizedLegs = Array.isArray(itinerary?.legs) ? itinerary.legs : [];
-  const normalizedRouteIds = getLegRouteIds(normalizedLegs);
+async function saveTravelPlan(userId, travelPlan = {}) {
+  const normalizedTravelPlanId = String(travelPlan?.travelPlanId || "").trim();
+  const normalizedTransferCount = Number(travelPlan?.transferCount || 0);
+  const normalizedTravelSegments = Array.isArray(travelPlan?.travelSegments) ? travelPlan.travelSegments : [];
+  const normalizedRouteIds = getTravelSegmentRouteIds(normalizedTravelSegments);
 
-  if (!normalizedItineraryId || normalizedTransferCount < 1 || normalizedLegs.length < 2) {
+  if (!normalizedTravelPlanId || normalizedTransferCount < 1 || normalizedTravelSegments.length < 2) {
     throw { statusCode: 400, message: "بيانات الرحلة غير مكتملة" };
   }
 
@@ -829,20 +829,20 @@ async function saveItinerary(userId, itinerary = {}) {
     throw { statusCode: 404, message: "بعض خطوط الرحلة غير موجودة" };
   }
 
-  const savedLegs = normalizedLegs.map((leg) => ({
-    routeId: String(leg?.route?.routeId || leg?.routeId || "").trim(),
+  const savedTravelSegments = normalizedTravelSegments.map((travelSegment) => ({
+    routeId: String(travelSegment?.route?.routeId || travelSegment?.routeId || "").trim(),
     selectedDirection:
-      leg?.route?.selectedDirection === "reverse" || leg?.selectedDirection === "reverse"
+      travelSegment?.route?.selectedDirection === "reverse" || travelSegment?.selectedDirection === "reverse"
         ? "reverse"
         : "forward",
-    originStopId: leg?.route?.matchedSegment?.originStopId || leg?.originStopId || leg?.boardAt?._id || null,
+    originStopId: travelSegment?.route?.matchedSegment?.originStopId || travelSegment?.originStopId || travelSegment?.boardAt?._id || null,
     destinationStopId:
-      leg?.route?.matchedSegment?.destinationStopId || leg?.destinationStopId || leg?.alightAt?._id || null,
-    boardAt: normalizeLocationSummary(leg?.boardAt),
-    alightAt: normalizeLocationSummary(leg?.alightAt),
+      travelSegment?.route?.matchedSegment?.destinationStopId || travelSegment?.destinationStopId || travelSegment?.alightAt?._id || null,
+    boardAt: normalizeLocationSummary(travelSegment?.boardAt),
+    alightAt: normalizeLocationSummary(travelSegment?.alightAt),
   }));
 
-  const transferWalks = (Array.isArray(itinerary?.transferWalks) ? itinerary.transferWalks : []).map(
+  const transferWalks = (Array.isArray(travelPlan?.transferWalks) ? travelPlan.transferWalks : []).map(
     (walk) => ({
       from: normalizeLocationSummary(walk?.from),
       to: normalizeLocationSummary(walk?.to),
@@ -850,19 +850,19 @@ async function saveItinerary(userId, itinerary = {}) {
     }),
   );
 
-  const savedItinerary = await SavedItinerary.findOneAndUpdate(
-    { user: userId, itineraryId: normalizedItineraryId },
+  const savedTravelPlanDoc = await SavedTravelPlan.findOneAndUpdate(
+    { user: userId, travelPlanId: normalizedTravelPlanId },
     {
       user: userId,
-      itineraryId: normalizedItineraryId,
+      travelPlanId: normalizedTravelPlanId,
       transferCount: normalizedTransferCount,
       routeIds: normalizedRouteIds,
-      legs: savedLegs,
+      travelSegments: savedTravelSegments,
       transferWalks,
-      totalFare: normalizeFare(itinerary?.totalFare),
+      totalFare: normalizeFare(travelPlan?.totalFare),
       originWalkDistanceMeters: Math.max(
         0,
-        Number(itinerary?.originWalkDistanceMeters || 0),
+        Number(travelPlan?.originWalkDistanceMeters || 0),
       ),
     },
     { upsert: true, new: true, setDefaultsOnInsert: true },
@@ -870,7 +870,7 @@ async function saveItinerary(userId, itinerary = {}) {
 
   return {
     message: "تم حفظ الرحلة ✓",
-    itineraryId: savedItinerary.itineraryId,
+    travelPlanId: savedTravelPlanDoc.travelPlanId,
   };
 }
 
@@ -889,20 +889,20 @@ async function unsaveRoute(userId, routeId) {
   return { message: "تم إزالة الخط ✓" };
 }
 
-async function unsaveItinerary(userId, itineraryId) {
-  const normalizedItineraryId = String(itineraryId || "").trim();
-  if (!normalizedItineraryId) {
-    throw { statusCode: 400, message: "يرجى إرسال itineraryId صحيحة" };
+async function unsaveTravelPlan(userId, travelPlanId) {
+  const normalizedTravelPlanId = String(travelPlanId || "").trim();
+  if (!normalizedTravelPlanId) {
+    throw { statusCode: 400, message: "يرجى إرسال travelPlanId صحيحة" };
   }
 
-  await SavedItinerary.deleteOne({
+  await SavedTravelPlan.deleteOne({
     user: userId,
-    itineraryId: normalizedItineraryId,
+    travelPlanId: normalizedTravelPlanId,
   });
 
   return {
     message: "تم إزالة الرحلة ✓",
-    itineraryId: normalizedItineraryId,
+    travelPlanId: normalizedTravelPlanId,
   };
 }
 
@@ -913,7 +913,7 @@ async function clearSavedRoutes(userId) {
       { $set: { savedRoutes: [] } },
       { new: true },
     ),
-    SavedItinerary.deleteMany({ user: userId }),
+    SavedTravelPlan.deleteMany({ user: userId }),
   ]);
   return { message: "تم حذف كل المحفوظات ✓" };
 }
@@ -944,35 +944,35 @@ async function getSavedRoutes(userId) {
     }),
   );
 
-  const itineraries = await SavedItinerary.find({ user: userId })
+  const travelPlans = await SavedTravelPlan.find({ user: userId })
     .sort({ createdAt: -1 })
     .lean();
 
-  const hydratedItineraries = await Promise.all(
-    itineraries.map(async (savedItinerary) => {
-      const legs = await Promise.all(
-        savedItinerary.legs.map(async (savedLeg) => {
+  const hydratedTravelPlans = await Promise.all(
+    travelPlans.map(async (savedTravelPlanDoc) => {
+      const travelSegments = await Promise.all(
+        savedTravelPlanDoc.travelSegments.map(async (savedTravelSegment) => {
           try {
             const { route, accuracyStats } = await getRouteById(
-              savedLeg.routeId,
-              savedLeg.selectedDirection,
+              savedTravelSegment.routeId,
+              savedTravelSegment.selectedDirection,
             );
             const boardAt =
-              findRouteStopById(route, savedLeg.originStopId) ||
-              savedLeg.boardAt ||
+              findRouteStopById(route, savedTravelSegment.originStopId) ||
+              savedTravelSegment.boardAt ||
               route.origin;
             const alightAt =
-              findRouteStopById(route, savedLeg.destinationStopId) ||
-              savedLeg.alightAt ||
+              findRouteStopById(route, savedTravelSegment.destinationStopId) ||
+              savedTravelSegment.alightAt ||
               route.destination;
 
             return {
               route: {
                 ...route,
                 matchedSegment: {
-                  originStopId: savedLeg.originStopId || boardAt?._id || null,
+                  originStopId: savedTravelSegment.originStopId || boardAt?._id || null,
                   destinationStopId:
-                    savedLeg.destinationStopId || alightAt?._id || null,
+                    savedTravelSegment.destinationStopId || alightAt?._id || null,
                 },
               },
               accuracyStats,
@@ -985,33 +985,33 @@ async function getSavedRoutes(userId) {
         }),
       );
 
-      const validLegs = legs.filter(Boolean);
-      if (validLegs.length < 2) {
+      const validTravelSegments = travelSegments.filter(Boolean);
+      if (validTravelSegments.length < 2) {
         return null;
       }
 
-      const transferPlaces = (savedItinerary.transferWalks || []).map((walk) =>
+      const transferPlaces = (savedTravelPlanDoc.transferWalks || []).map((walk) =>
         walk.distanceMeters === 0 ? walk.from : walk.to,
       );
 
       return {
-        itineraryType: "transfer",
-        itineraryId: savedItinerary.itineraryId,
-        transferCount: savedItinerary.transferCount,
-        transferWalks: savedItinerary.transferWalks || [],
-        transferWalk: savedItinerary.transferWalks?.[0] || null,
+        travelPlanType: "transfer",
+        travelPlanId: savedTravelPlanDoc.travelPlanId,
+        transferCount: savedTravelPlanDoc.transferCount,
+        transferWalks: savedTravelPlanDoc.transferWalks || [],
+        transferWalk: savedTravelPlanDoc.transferWalks?.[0] || null,
         transferPlaces,
         transferPlace: transferPlaces[0] || null,
-        totalFare: savedItinerary.totalFare || null,
-        originWalkDistanceMeters: savedItinerary.originWalkDistanceMeters || 0,
-        legs: validLegs,
+        totalFare: savedTravelPlanDoc.totalFare || null,
+        originWalkDistanceMeters: savedTravelPlanDoc.originWalkDistanceMeters || 0,
+        travelSegments: validTravelSegments,
       };
     }),
   );
 
   return {
     routes: routesWithStats.filter(Boolean),
-    itineraries: hydratedItineraries.filter(Boolean),
+    travelPlans: hydratedTravelPlans.filter(Boolean),
   };
 }
 
@@ -1021,9 +1021,9 @@ module.exports = {
   getStations,
   getRouteById,
   saveRoute,
-  saveItinerary,
+  saveTravelPlan,
   unsaveRoute,
-  unsaveItinerary,
+  unsaveTravelPlan,
   clearSavedRoutes,
   getHistory,
   getSavedRoutes,

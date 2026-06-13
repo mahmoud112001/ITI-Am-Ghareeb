@@ -1,11 +1,11 @@
-﻿import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/axios'
 import RouteCard from '../components/RouteCard'
-import ItineraryCard from '../components/ItineraryCard'
+import TravelPlanCard from '../components/TravelPlanCard'
 import RatingModal from '../components/RatingModal'
-import ItineraryRatingModal from '../components/ItineraryRatingModal'
+import TravelPlanRatingModal from '../components/TravelPlanRatingModal'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
 import { useAuth } from '../context/AuthContext'
 
@@ -156,13 +156,13 @@ export default function SearchPage() {
   const [nearbySearch, setNearbySearch] = useState(false)
   const [ratingRouteId, setRatingRouteId] = useState(null)
   const [ratingRouteName, setRatingRouteName] = useState(null)
-  const [ratingItinerary, setRatingItinerary] = useState(null)
+  const [ratingTravelPlan, setRatingTravelPlan] = useState(null)
   const [savedRouteIds, setSavedRouteIds] = useState([])
-  const [savedItineraryIds, setSavedItineraryIds] = useState([])
+  const [savedTravelPlanIds, setSavedTravelPlanIds] = useState([])
   const [savingRouteId, setSavingRouteId] = useState(null)
-  const [savingItineraryId, setSavingItineraryId] = useState(null)
+  const [savingTravelPlanId, setSavingTravelPlanId] = useState(null)
   const [justSavedRouteId, setJustSavedRouteId] = useState(null)
-  const [justSavedItineraryId, setJustSavedItineraryId] = useState(null)
+  const [justSavedTravelPlanId, setJustSavedTravelPlanId] = useState(null)
   const [originCoords, setOriginCoords] = useState(null)
   const [locationError, setLocationError] = useState('')
 
@@ -184,8 +184,8 @@ export default function SearchPage() {
   useEffect(() => {
     if (savedItemsData) {
       setSavedRouteIds((savedItemsData.routes || []).map((route) => route.routeId))
-      setSavedItineraryIds(
-        (savedItemsData.itineraries || []).map((itinerary) => itinerary.itineraryId),
+      setSavedTravelPlanIds(
+        (savedItemsData.travelPlans || []).map((travelPlan) => travelPlan.travelPlanId),
       )
     }
   }, [savedItemsData])
@@ -311,32 +311,32 @@ export default function SearchPage() {
     }
   }
 
-  async function handleSaveItinerary(itinerary) {
-    if (!user || !itinerary?.itineraryId) return
+  async function handleSaveTravelPlan(travelPlan) {
+    if (!user || !travelPlan?.travelPlanId) return
 
-    setSavingItineraryId(itinerary.itineraryId)
+    setSavingTravelPlanId(travelPlan.travelPlanId)
 
     try {
-      if (savedItineraryIds.includes(itinerary.itineraryId)) {
-        await api.delete('/api/routes/saved-itineraries', {
-          data: { itineraryId: itinerary.itineraryId },
+      if (savedTravelPlanIds.includes(travelPlan.travelPlanId)) {
+        await api.delete('/api/routes/saved-travel-plans', {
+          data: { travelPlanId: travelPlan.travelPlanId },
         })
-        setSavedItineraryIds((prev) =>
-          prev.filter((savedId) => savedId !== itinerary.itineraryId),
+        setSavedTravelPlanIds((prev) =>
+          prev.filter((savedId) => savedId !== travelPlan.travelPlanId),
         )
       } else {
-        await api.post('/api/routes/saved-itineraries', itinerary)
-        setSavedItineraryIds((prev) =>
-          Array.from(new Set([...prev, itinerary.itineraryId])),
+        await api.post('/api/routes/saved-travel-plans', travelPlan)
+        setSavedTravelPlanIds((prev) =>
+          Array.from(new Set([...prev, travelPlan.travelPlanId])),
         )
-        setJustSavedItineraryId(itinerary.itineraryId)
-        setTimeout(() => setJustSavedItineraryId(null), 1000)
+        setJustSavedTravelPlanId(travelPlan.travelPlanId)
+        setTimeout(() => setJustSavedTravelPlanId(null), 1000)
       }
       queryClient.invalidateQueries({ queryKey: ['saved-items'] })
     } catch (err) {
       // ignore errors silently for now
     } finally {
-      setTimeout(() => setSavingItineraryId(null), 1000)
+      setTimeout(() => setSavingTravelPlanId(null), 1000)
     }
   }
 
@@ -476,16 +476,16 @@ export default function SearchPage() {
               {results.length} نتيجة لـ «{originCoords && !origin.trim() ? 'موقعي الحالي' : origin} ← {destination}»
             </p>
             {results.map((result) =>
-              result.itineraryType === 'transfer' ? (
-                <ItineraryCard
-                  key={result.itineraryId}
-                  itinerary={result}
-                  onRateClick={setRatingItinerary}
-                  onSaveClick={handleSaveItinerary}
-                  onUnsaveClick={handleSaveItinerary}
-                  isSaved={savedItineraryIds.includes(result.itineraryId)}
-                  isSaving={savingItineraryId === result.itineraryId}
-                  isJustSaved={justSavedItineraryId === result.itineraryId}
+              result.travelPlanType === 'transfer' ? (
+                <TravelPlanCard
+                  key={result.travelPlanId}
+                  travelPlan={result}
+                  onRateClick={setRatingTravelPlan}
+                  onSaveClick={handleSaveTravelPlan}
+                  onUnsaveClick={handleSaveTravelPlan}
+                  isSaved={savedTravelPlanIds.includes(result.travelPlanId)}
+                  isSaving={savingTravelPlanId === result.travelPlanId}
+                  isJustSaved={justSavedTravelPlanId === result.travelPlanId}
                 />
               ) : (
                 <RouteCard
@@ -597,11 +597,11 @@ export default function SearchPage() {
         />
       )}
 
-      {ratingItinerary && (
-        <ItineraryRatingModal
-          itinerary={ratingItinerary}
-          onClose={() => setRatingItinerary(null)}
-          onSuccess={() => setRatingItinerary(null)}
+      {ratingTravelPlan && (
+        <TravelPlanRatingModal
+          travelPlan={ratingTravelPlan}
+          onClose={() => setRatingTravelPlan(null)}
+          onSuccess={() => setRatingTravelPlan(null)}
         />
       )}
     </div>

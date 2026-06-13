@@ -2,14 +2,14 @@ const mongoose = require("mongoose");
 
 const { Schema } = mongoose;
 
-const ItineraryRatingSchema = new Schema(
+const TravelPlanRatingSchema = new Schema(
   {
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    itineraryId: {
+    travelPlanId: {
       type: String,
       required: true,
       trim: true,
@@ -43,6 +43,7 @@ const ItineraryRatingSchema = new Schema(
   { timestamps: true },
 );
 
-ItineraryRatingSchema.index({ user: 1, itineraryId: 1 }, { unique: true });
+TravelPlanRatingSchema.index({ user: 1, travelPlanId: 1 }, { unique: true });
 
-module.exports = mongoose.model("ItineraryRating", ItineraryRatingSchema);
+module.exports = mongoose.model("TravelPlanRating", TravelPlanRatingSchema);
+

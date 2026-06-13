@@ -4,9 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
 import RouteCard from '../components/RouteCard'
-import ItineraryCard from '../components/ItineraryCard'
+import TravelPlanCard from '../components/TravelPlanCard'
 import RatingModal from '../components/RatingModal'
-import ItineraryRatingModal from '../components/ItineraryRatingModal'
+import TravelPlanRatingModal from '../components/TravelPlanRatingModal'
 import api from '../lib/axios'
 
 // ── Relative time ─────────────────────────────────────────────────────────────
@@ -139,11 +139,11 @@ function SearchHistoryTab() {
 function SavedItemsTab() {
   const queryClient = useQueryClient()
   const [ratingRouteId, setRatingRouteId] = useState(null)
-  const [ratingItinerary, setRatingItinerary] = useState(null)
+  const [ratingTravelPlan, setRatingTravelPlan] = useState(null)
   const [clearConfirm, setClearConfirm] = useState(false)
   const [clearingAll, setClearingAll] = useState(false)
   const [pendingRouteId, setPendingRouteId] = useState(null)
-  const [pendingItineraryId, setPendingItineraryId] = useState(null)
+  const [pendingTravelPlanId, setPendingTravelPlanId] = useState(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['saved-items'],
@@ -151,8 +151,8 @@ function SavedItemsTab() {
   })
 
   const savedRoutes = data?.routes || []
-  const savedItineraries = data?.itineraries || []
-  const hasSavedItems = savedRoutes.length > 0 || savedItineraries.length > 0
+  const savedTravelPlans = data?.travelPlans || []
+  const hasSavedItems = savedRoutes.length > 0 || savedTravelPlans.length > 0
 
   if (isLoading) {
     return (
@@ -178,17 +178,17 @@ function SavedItemsTab() {
     }
   }
 
-  async function handleUnsaveItinerary(itinerary) {
-    if (!itinerary?.itineraryId) return
+  async function handleUnsaveTravelPlan(travelPlan) {
+    if (!travelPlan?.travelPlanId) return
 
-    setPendingItineraryId(itinerary.itineraryId)
+    setPendingTravelPlanId(travelPlan.travelPlanId)
     try {
-      await api.delete('/api/routes/saved-itineraries', {
-        data: { itineraryId: itinerary.itineraryId },
+      await api.delete('/api/routes/saved-travel-plans', {
+        data: { travelPlanId: travelPlan.travelPlanId },
       })
       queryClient.invalidateQueries({ queryKey: ['saved-items'] })
     } finally {
-      setPendingItineraryId(null)
+      setPendingTravelPlanId(null)
     }
   }
 
@@ -249,7 +249,7 @@ function SavedItemsTab() {
           </div>
         )}
       </div>
-      {savedItineraries.length > 0 && (
+      {savedTravelPlans.length > 0 && (
         <section className="flex flex-col gap-4">
           <div className="text-right">
             <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>
@@ -259,14 +259,14 @@ function SavedItemsTab() {
               الرحلات متعددة الركوبات محفوظة كمسارات كاملة.
             </p>
           </div>
-          {savedItineraries.map((itinerary) => (
-            <ItineraryCard
-              key={itinerary.itineraryId}
-              itinerary={itinerary}
-              onRateClick={setRatingItinerary}
-              onUnsaveClick={handleUnsaveItinerary}
+          {savedTravelPlans.map((travelPlan) => (
+            <TravelPlanCard
+              key={travelPlan.travelPlanId}
+              travelPlan={travelPlan}
+              onRateClick={setRatingTravelPlan}
+              onUnsaveClick={handleUnsaveTravelPlan}
               isSaved
-              isSaving={pendingItineraryId === itinerary.itineraryId}
+              isSaving={pendingTravelPlanId === travelPlan.travelPlanId}
             />
           ))}
         </section>
@@ -302,11 +302,11 @@ function SavedItemsTab() {
           onSuccess={() => setRatingRouteId(null)}
         />
       )}
-      {ratingItinerary && (
-        <ItineraryRatingModal
-          itinerary={ratingItinerary}
-          onClose={() => setRatingItinerary(null)}
-          onSuccess={() => setRatingItinerary(null)}
+      {ratingTravelPlan && (
+        <TravelPlanRatingModal
+          travelPlan={ratingTravelPlan}
+          onClose={() => setRatingTravelPlan(null)}
+          onSuccess={() => setRatingTravelPlan(null)}
         />
       )}
     </div>

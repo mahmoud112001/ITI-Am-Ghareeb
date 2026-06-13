@@ -12,8 +12,8 @@ const ratingSchema = Joi.object({
   comment: Joi.string().max(280).optional().allow(null, ''),
 })
 
-const itineraryRatingSchema = Joi.object({
-  itineraryId: Joi.string().required(),
+const travelPlanRatingSchema = Joi.object({
+  travelPlanId: Joi.string().required(),
   routeIds: Joi.array().items(Joi.string()).min(1).required(),
   transferCount: Joi.number().integer().min(1).required(),
   isAccurate: Joi.boolean().required(),
@@ -37,12 +37,12 @@ const submitRating = async (req, res, next) => {
   }
 }
 
-const submitItineraryRating = async (req, res, next) => {
+const submitTravelPlanRating = async (req, res, next) => {
   try {
-    const { itineraryId, routeIds, transferCount, isAccurate, comment } = req.body
-    const result = await ratingService.submitItineraryRating(
+    const { travelPlanId, routeIds, transferCount, isAccurate, comment } = req.body
+    const result = await ratingService.submitTravelPlanRating(
       req.user.userId,
-      itineraryId,
+      travelPlanId,
       routeIds,
       transferCount,
       isAccurate,
@@ -68,7 +68,7 @@ const getRatingStats = async (req, res, next) => {
 const router = express.Router()
 
 router.post('/', protect, validate(ratingSchema), submitRating)
-router.post('/itinerary', protect, validate(itineraryRatingSchema), submitItineraryRating)
+router.post('/travel-plan', protect, validate(travelPlanRatingSchema), submitTravelPlanRating)
 router.get('/:routeId/stats', getRatingStats)
 
 module.exports = router

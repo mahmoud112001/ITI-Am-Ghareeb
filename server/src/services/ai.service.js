@@ -26,14 +26,14 @@ async function streamTransitAdvice(origin, destination, userMessage, res) {
 
     // ── Step 1: DB lookup ───────────────────────────────────────────────────
     const routeResults = await searchRoutes(origin, destination, null, null)
-    const itineraries = routeResults.slice(0, 5)
+    const travelPlans = routeResults.slice(0, 5)
 
-    function formatLeg(leg, index) {
+    function formatTravelSegment(travelSegment, index) {
       return (
-        `الركوبة ${index + 1}: ${leg.route.nameAr}\n` +
-        `من: ${leg.boardAt?.nameAr} إلى: ${leg.alightAt?.nameAr}\n` +
-        `محطات الجزء: ${leg.route.stations.map((s) => s.nameAr).join(' ← ')}\n` +
-        `تعريفة الجزء: ${leg.route.fare?.min ?? 0}–${leg.route.fare?.max ?? 0} جنيه`
+        `الركوبة ${index + 1}: ${travelSegment.route.nameAr}\n` +
+        `من: ${travelSegment.boardAt?.nameAr} إلى: ${travelSegment.alightAt?.nameAr}\n` +
+        `محطات الجزء: ${travelSegment.route.stations.map((s) => s.nameAr).join(' ← ')}\n` +
+        `تعريفة الجزء: ${travelSegment.route.fare?.min ?? 0}–${travelSegment.route.fare?.max ?? 0} جنيه`
       )
     }
 
@@ -52,11 +52,11 @@ async function streamTransitAdvice(origin, destination, userMessage, res) {
 
     // ── Step 2: Build Arabic context string ─────────────────────────────────
     const context =
-      itineraries.length > 0
-        ? itineraries
+      travelPlans.length > 0
+        ? travelPlans
             .map((result) => {
-              if (result.itineraryType === 'transfer') {
-                const legsText = result.legs.map(formatLeg).join('\n')
+              if (result.travelPlanType === 'transfer') {
+                const travelSegmentsText = result.travelSegments.map(formatTravelSegment).join('\n')
                 const transfersText = (result.transferWalks || [])
                   .map(formatTransferWalk)
                   .filter(Boolean)
@@ -64,7 +64,7 @@ async function streamTransitAdvice(origin, destination, userMessage, res) {
 
                 return (
                   `رحلة بعدد ${result.transferCount} تحويلة\n` +
-                  `${legsText}\n` +
+                  `${travelSegmentsText}\n` +
                   (transfersText ? `${transfersText}\n` : '') +
                   `إجمالي التعريفة: ${result.totalFare?.min ?? 0}–${result.totalFare?.max ?? 0} جنيه`
                 )

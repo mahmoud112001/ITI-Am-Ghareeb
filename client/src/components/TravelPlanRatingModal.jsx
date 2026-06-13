@@ -4,22 +4,22 @@ import api from '../lib/axios'
 
 const MAX_COMMENT = 280
 
-export default function ItineraryRatingModal({ itinerary, onClose, onSuccess }) {
+export default function TravelPlanRatingModal({ travelPlan, onClose, onSuccess }) {
   const [selected, setSelected] = useState(null)
   const [comment, setComment] = useState('')
   const [successMsg, setSuccessMsg] = useState(false)
   const [apiError, setApiError] = useState('')
 
   const routeIds = Array.from(
-    new Set((itinerary?.legs || []).map((leg) => leg.route?.routeId).filter(Boolean)),
+    new Set((travelPlan?.travelSegments || []).map((travelSegment) => travelSegment.route?.routeId).filter(Boolean)),
   )
 
   const mutation = useMutation({
     mutationFn: () =>
-      api.post('/api/ratings/itinerary', {
-        itineraryId: itinerary.itineraryId,
+      api.post('/api/ratings/travel-plan', {
+        travelPlanId: travelPlan.travelPlanId,
         routeIds,
-        transferCount: itinerary.transferCount,
+        transferCount: travelPlan.transferCount,
         isAccurate: selected,
         comment: comment.trim() || null,
       }),
@@ -73,7 +73,7 @@ export default function ItineraryRatingModal({ itinerary, onClose, onSuccess }) 
           التقييم هنا للرحلة كلها، مش لكل خط لوحده.
         </p>
         <p className="text-sm mb-5" style={{ color: '#6B7280' }}>
-          {itinerary?.legs?.[0]?.boardAt?.nameAr} ← {itinerary?.legs?.[itinerary.legs.length - 1]?.alightAt?.nameAr}
+          {travelPlan?.travelSegments?.[0]?.boardAt?.nameAr} ← {travelPlan?.travelSegments?.[travelPlan.travelSegments.length - 1]?.alightAt?.nameAr}
         </p>
 
         {successMsg ? (
@@ -171,3 +171,4 @@ export default function ItineraryRatingModal({ itinerary, onClose, onSuccess }) 
     </div>
   )
 }
+

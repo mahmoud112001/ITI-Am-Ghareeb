@@ -7,7 +7,7 @@ import { ArrowDown, ArrowRightLeft, ArrowUp, Flag, Play } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import api from '../lib/axios'
-import { parseMapLegDescriptors } from '../utils/itineraryMap'
+import { parseTravelPlanSegmentDescriptors } from '../utils/travelPlanMap'
 
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -16,7 +16,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
 
-const LEG_PALETTES = [
+const TRAVEL_SEGMENT_PALETTES = [
   {
     main: '#F59E0B',
     casing: '#9A3412',
@@ -72,8 +72,8 @@ function ordinalLabel(index) {
   return labels[index] || `${index + 1}`
 }
 
-function getLegPalette(index) {
-  return LEG_PALETTES[index % LEG_PALETTES.length]
+function getTravelSegmentPalette(index) {
+  return TRAVEL_SEGMENT_PALETTES[index % TRAVEL_SEGMENT_PALETTES.length]
 }
 
 function FitBounds({ coords }) {
@@ -155,12 +155,12 @@ function getPointMarkerStyle({ isEndpoint, isMatchedOrigin, isMatchedDestination
 function getMarkerBadge({
   isMatchedOrigin,
   isMatchedDestination,
-  legTitle = null,
-  palette = getLegPalette(0),
+  travelSegmentTitle = null,
+  palette = getTravelSegmentPalette(0),
 }) {
   if (isMatchedOrigin) {
     return {
-      text: legTitle ? `${legTitle}: ركوب` : 'ركوب',
+      text: travelSegmentTitle ? `${travelSegmentTitle}: ركوب` : 'ركوب',
       bg: palette.badgeBg,
       color: palette.badgeText,
       border: palette.badgeBorder,
@@ -169,7 +169,7 @@ function getMarkerBadge({
 
   if (isMatchedDestination) {
     return {
-      text: legTitle ? `${legTitle}: نزول` : 'نزول',
+      text: travelSegmentTitle ? `${travelSegmentTitle}: نزول` : 'نزول',
       bg: palette.light,
       color: palette.casing,
       border: palette.main,
@@ -660,12 +660,12 @@ function StationMarker({
   popupNote = null,
   badgeLabel = null,
   badgeOverride = null,
-  palette = getLegPalette(0),
+  palette = getTravelSegmentPalette(0),
 }) {
   const badge = badgeOverride || getMarkerBadge({
     isMatchedOrigin,
     isMatchedDestination,
-    legTitle: badgeLabel,
+    travelSegmentTitle: badgeLabel,
     palette,
   })
   const badgeIcon = buildBadgeIcon(badge, markerStyle.outerRadius + 8)
@@ -731,34 +731,34 @@ function StationMarker({
 export default function MapPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const legDescriptors = parseMapLegDescriptors(searchParams)
-  const hasLegSelection = legDescriptors.length > 0
-  const isTransferView = legDescriptors.length > 1
+  const selectedTravelSegments = parseTravelPlanSegmentDescriptors(searchParams)
+  const hasTravelSegmentSelection = selectedTravelSegments.length > 0
+  const isTransferView = selectedTravelSegments.length > 1
 
   const [userLocation, setUserLocation] = useState(null)
   const [locError, setLocError] = useState('')
   const [nearestRoute, setNearestRoute] = useState(null)
 
-  const legRouteQueries = useQueries({
-    queries: legDescriptors.map((leg) => ({
-      queryKey: ['route', leg.routeId, leg.direction],
+  const travelSegmentRouteQueries = useQueries({
+    queries: selectedTravelSegments.map((travelSegment) => ({
+      queryKey: ['route', travelSegment.routeId, travelSegment.direction],
       queryFn: () =>
         api
-          .get(`/api/routes/${leg.routeId}`, { params: { direction: leg.direction } })
+          .get(`/api/routes/${travelSegment.routeId}`, { params: { direction: travelSegment.direction } })
           .then((response) => response.data),
-      enabled: Boolean(leg?.routeId),
+      enabled: Boolean(travelSegment?.routeId),
     })),
   })
 
-  const routeStates = legDescriptors.map((descriptor, index) => {
-    const route = legRouteQueries[index]?.data?.route || null
+  const routeStates = selectedTravelSegments.map((descriptor, index) => {
+    const route = travelSegmentRouteQueries[index]?.data?.route || null
     if (!route) return null
 
     return {
       ...buildRouteMapState(route, descriptor.originStopId, descriptor.destinationStopId),
       descriptor,
-      legIndex: index,
-      palette: getLegPalette(index),
+      travelSegmentIndex: index,
+      palette: getTravelSegmentPalette(index),
     }
   })
 
@@ -823,7 +823,7 @@ export default function MapPage() {
     ...transferSteps.flatMap((step) => step.coords || []),
   ]
 
-  const isLoading = legRouteQueries.some((query) => query.isLoading || query.isPending)
+  const isLoading = travelSegmentRouteQueries.some((query) => query.isLoading || query.isPending)
   const visibleRouteIds = new Set(hydratedRouteStates.map((routeState) => routeState.route.routeId))
 
   function handleLocate() {
@@ -866,10 +866,10 @@ export default function MapPage() {
           <>
             <div className="p-4" style={{ borderBottom: '1px solid #E5E7EB', backgroundColor: '#FFFBEB' }}>
               <h2 className="font-bold text-base" style={{ color: '#1B2A4A' }}>
-                {formatTransferViewTitle(legDescriptors.length - 1)}
+                {formatTransferViewTitle(selectedTravelSegments.length - 1)}
               </h2>
               <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
-                {legDescriptors.length} ركوبات على الخريطة
+                {selectedTravelSegments.length} ركوبات على الخريطة
               </p>
             </div>
             {routeStates.map((routeState, index) => {
@@ -941,7 +941,7 @@ export default function MapPage() {
           {fitCoords.length >= 2 && <FitBounds coords={fitCoords} />}
 
           {hydratedRouteStates.map((routeState) => (
-            <Fragment key={`${routeState.route.routeId}-${routeState.legIndex}`}>
+            <Fragment key={`${routeState.route.routeId}-${routeState.travelSegmentIndex}`}>
               {routeState.mutedLeadingCoords.length >= 2 && (
                 <RoutePolyline
                   positions={routeState.mutedLeadingCoords}
@@ -980,14 +980,14 @@ export default function MapPage() {
             </Fragment>
           ))}
 
-          {hydratedRouteStates.map((routeState, legIndex) =>
+          {hydratedRouteStates.map((routeState, travelSegmentIndex) =>
             routeState.validStations.map((station, stationIndex) => {
               const stationId = station?._id ? String(station._id) : null
               const sharedTransferStep = stationId
-                ? sharedTransferRenderKeys.get(`${legIndex}:${stationId}`)
+                ? sharedTransferRenderKeys.get(`${travelSegmentIndex}:${stationId}`)
                 : null
 
-              if (stationId && sharedTransferSkipKeys.has(`${legIndex}:${stationId}`)) {
+              if (stationId && sharedTransferSkipKeys.has(`${travelSegmentIndex}:${stationId}`)) {
                 return null
               }
 
@@ -1024,13 +1024,13 @@ export default function MapPage() {
 
               const popupMessage = sharedTransferStep
                 ? sharedTransferStep.isSharedStation
-                  ? `تحويل بين الركوبة ${ordinalLabel(legIndex)} والركوبة ${ordinalLabel(legIndex + 1)}`
+                  ? `تحويل بين الركوبة ${ordinalLabel(travelSegmentIndex)} والركوبة ${ordinalLabel(travelSegmentIndex + 1)}`
                   : 'نقطة التحويل'
-                : isMatchedOrigin && legIndex === 0
+                : isMatchedOrigin && travelSegmentIndex === 0
                   ? 'نقطة الركوب المطلوبة'
                   : isMatchedOrigin
                     ? 'ركوب بعد التحويل'
-                    : isMatchedDestination && legIndex === routeStates.length - 1
+                    : isMatchedDestination && travelSegmentIndex === routeStates.length - 1
                       ? 'نقطة النزول المطلوبة'
                       : isMatchedDestination
                         ? 'نزول للتحويل'
@@ -1038,7 +1038,7 @@ export default function MapPage() {
                           ? 'بداية الخط'
                           : isLast
                             ? 'نهاية الخط'
-                            : `الركوبة ${ordinalLabel(legIndex)}`
+                            : `الركوبة ${ordinalLabel(travelSegmentIndex)}`
 
               return (
                 <StationMarker
@@ -1059,7 +1059,7 @@ export default function MapPage() {
                         )
                       : null
                   }
-                  badgeLabel={ordinalLabel(legIndex)}
+                  badgeLabel={ordinalLabel(travelSegmentIndex)}
                   popupNote={popupMessage}
                   palette={routeState.palette}
                 />
@@ -1138,7 +1138,7 @@ export default function MapPage() {
           )}
         </MapContainer>
 
-        {!hasLegSelection && (
+        {!hasTravelSegmentSelection && (
           <div
             className="absolute inset-0 flex items-center justify-center pointer-events-none"
             style={{ zIndex: 400 }}
