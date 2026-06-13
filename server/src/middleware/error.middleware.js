@@ -27,7 +27,15 @@ const errorMiddleware = (err, req, res, next) => {
 
   // ── MongoDB duplicate key ─────────────────────────────────────────────────
   if (err.code === 11000) {
-    return res.status(409).json({ success: false, message: 'هذا البريد الإلكتروني مسجل بالفعل' })
+    if (err.keyPattern?.email) {
+      return res.status(409).json({ success: false, message: 'هذا البريد الإلكتروني مسجل بالفعل' })
+    }
+
+    if (err.keyPattern?.routeId) {
+      return res.status(409).json({ success: false, message: 'رقم الخط مستخدم بالفعل' })
+    }
+
+    return res.status(409).json({ success: false, message: 'القيمة موجودة بالفعل' })
   }
 
   // ── JWT errors ────────────────────────────────────────────────────────────

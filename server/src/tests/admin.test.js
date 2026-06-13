@@ -155,6 +155,28 @@ describe('PUT /api/admin/routes/:id', () => {
     expect(res.body.route.nameEn).toBe('C → D')
   })
 
+  test('duplicate routeId on update → 409', async () => {
+    const duplicatePayload = buildRoutePayloadFromLegacyRoute({
+      routeId: 'ADMIN-SEED-02',
+      type: 'microbus',
+      stations: [
+        { order: 1, nameAr: 'هـ', nameEn: 'E' },
+        { order: 2, nameAr: 'و', nameEn: 'F' },
+      ],
+      fare: { min: 4, max: 7 },
+    })
+    const duplicateRoute = new Route(extractRouteFields(duplicatePayload))
+    await syncRouteLocations(duplicateRoute, duplicatePayload)
+
+    const res = await request(app)
+      .put(`/api/admin/routes/${seededRouteId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ routeId: 'ADMIN-SEED-02' })
+
+    expect(res.status).toBe(409)
+    expect(res.body.message).toBe('رقم الخط مستخدم بالفعل')
+  })
+
   test('invalid id → 404 or 500', async () => {
     const res = await request(app)
       .put('/api/admin/routes/000000000000000000000000')

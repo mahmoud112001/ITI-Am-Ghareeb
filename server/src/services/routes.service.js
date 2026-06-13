@@ -16,6 +16,10 @@ const {
 const WALKING_TRANSFER_METERS = 500;
 const LOCATION_RESULT_LIMIT = 8;
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function toRadians(value) {
   return (value * Math.PI) / 180;
 }
@@ -75,7 +79,7 @@ async function findMatchingLocations(query) {
   const normalized = normalizeSearchText(query);
   if (!normalized) return [];
 
-  const regex = new RegExp(query.trim(), "i");
+  const regex = new RegExp(escapeRegex(query.trim()), "i");
   const filter = {
     $or: [
       { nameAr: regex },
@@ -688,7 +692,14 @@ async function findNearestRoutes(userCoords, userId = null) {
 }
 
 async function getStations() {
-  const locations = await Location.find({}, { nameAr: 1 })
+  const activeLocationIds = await Route.distinct("stops.location", {
+    isActive: true,
+  });
+
+  const locations = await Location.find(
+    { _id: { $in: activeLocationIds } },
+    { nameAr: 1 },
+  )
     .sort({ nameAr: 1 })
     .lean();
 

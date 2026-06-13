@@ -10,6 +10,7 @@ import {
   getAdminRoutes,
   createRoute,
   updateRoute,
+  restoreRoute,
   deleteRoute,
 } from '../services/admin.service'
 
@@ -82,6 +83,18 @@ export function useUpdateRoute() {
     mutationFn: ({ id, body }) => updateRoute(id, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-routes'] })
+    },
+  })
+}
+
+// ── useRestoreRoute ───────────────────────────────────────────────────────────
+export function useRestoreRoute() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: restoreRoute,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-routes'] })
+      qc.invalidateQueries({ queryKey: ADMIN_KEYS.stats })
     },
   })
 }

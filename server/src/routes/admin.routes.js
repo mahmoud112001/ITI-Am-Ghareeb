@@ -137,19 +137,9 @@ const restoreRoute = async (req, res, next) => {
   }
 };
 
-const getStats = async (req, res, next) => {
-  try {
-    const stats = await adminService.getStats();
-    res.status(200).json({ success: true, stats });
-  } catch (err) {
-    next(err);
-  }
-};
-
 const router = express.Router();
 
 router.use(protect, requireAdmin);
-router.get("/stats", getStats);
 router.get("/", listRoutes);
 router.post("/", validate(routeSchema), createRoute);
 router.put("/:id", validate(routeUpdateSchema), updateRoute);

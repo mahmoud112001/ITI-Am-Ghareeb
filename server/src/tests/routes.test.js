@@ -177,6 +177,16 @@ describe("GET /api/routes/search", () => {
     expect(res.status).toBe(400);
   });
 
+  test("regex metacharacters in search input do not crash the endpoint", async () => {
+    const res = await request(app)
+      .get("/api/routes/search")
+      .query({ origin: "[", destination: "محطة مصر" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.results)).toBe(true);
+  });
+
   test("current-location search with destination → returns nearest routes with distanceMeters", async () => {
     const res = await request(app)
       .get("/api/routes/search")
@@ -486,6 +496,38 @@ describe("GET /api/routes/stations", () => {
     expect(stationsRes.body.stations).toContain("بداية افتراضية");
     expect(stationsRes.body.stations).toContain("نقطة وسط افتراضية");
     expect(stationsRes.body.stations).toContain("نهاية افتراضية");
+  });
+
+  test("stations autocomplete excludes stops that belong only to inactive routes", async () => {
+    const inactivePayload = buildRoutePayloadFromLegacyRoute({
+      routeId: "TEST-INACTIVE-STATION-01",
+      type: "microbus",
+      direction: "one_way",
+      stations: [
+        {
+          order: 1,
+          nameAr: "محطة مخفية",
+          nameEn: "Hidden Stop",
+          coords: { lat: 31.23, lng: 29.94 },
+        },
+        {
+          order: 2,
+          nameAr: "نهاية مخفية",
+          nameEn: "Hidden End",
+          coords: { lat: 31.24, lng: 29.95 },
+        },
+      ],
+      fare: { min: 4, max: 6 },
+      verified: true,
+      isActive: false,
+    });
+    const inactiveRoute = new Route(extractRouteFields(inactivePayload));
+    await syncRouteLocations(inactiveRoute, inactivePayload);
+
+    const stationsRes = await request(app).get("/api/routes/stations");
+    expect(stationsRes.status).toBe(200);
+    expect(stationsRes.body.stations).not.toContain("محطة مخفية");
+    expect(stationsRes.body.stations).not.toContain("نهاية مخفية");
   });
 
   test("route response returns geometry separately and reverses it with reverse direction", async () => {

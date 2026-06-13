@@ -8,6 +8,7 @@ import {
   useAdminRoutes,
   useCreateRoute,
   useUpdateRoute,
+  useRestoreRoute,
   useDeleteRoute,
 } from '../hooks/useAdminRoutes'
 
@@ -1211,12 +1212,12 @@ export default function AdminPage() {
   const createMutation  = useCreateRoute()
   const updateMutation  = useUpdateRoute()
   const deleteMutation  = useDeleteRoute()
-  const restoreMutation = useUpdateRoute()
+  const restoreMutation = useRestoreRoute()
 
   function handleCreate(body) { createMutation.mutate(body, { onSuccess: () => setAddOpen(false) }) }
   function handleUpdate(body) { updateMutation.mutate({ id: editRoute._id, body }, { onSuccess: () => setEditRoute(null) }) }
   function handleDelete()     { deleteMutation.mutate(deleteRoute._id, { onSuccess: () => setDeleteRoute(null) }) }
-  function handleRestore(id)  { restoreMutation.mutate({ id, body: { isActive: true } }) }
+  function handleRestore(id)  { restoreMutation.mutate(id) }
 
   return (
     <div className="min-h-screen pb-16" style={{ backgroundColor: '#FDF6EC', fontFamily: 'Cairo, sans-serif' }} dir="rtl">

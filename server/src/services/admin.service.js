@@ -65,6 +65,17 @@ async function updateRoute(id, data) {
     throw { statusCode: 404, message: "الخط غير موجود" };
   }
 
+  if (data.routeId && data.routeId !== route.routeId) {
+    const existing = await Route.findOne({
+      routeId: data.routeId,
+      _id: { $ne: route._id },
+    });
+
+    if (existing) {
+      throw { statusCode: 409, message: "رقم الخط مستخدم بالفعل" };
+    }
+  }
+
   Object.assign(
     route,
     extractRouteFields({
