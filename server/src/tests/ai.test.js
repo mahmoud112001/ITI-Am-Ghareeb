@@ -3,8 +3,15 @@ const mongoose = require('mongoose')
 const request = require('supertest')
 const app = require('../../app')
 const { Route } = require('../models/index.js')
+const {
+  buildRoutePayloadFromLegacyRoute,
+  extractRouteFields,
+  syncRouteLocations,
+} = require('../utils/routeNetwork.js')
 
 // ── Mock OpenAI ───────────────────────────────────────────────────────────────
+
+const mockCreate = jest.fn()
 
 jest.mock('openai', () => {
   const mockStream = {
@@ -17,7 +24,7 @@ jest.mock('openai', () => {
   return jest.fn().mockImplementation(() => ({
     chat: {
       completions: {
-        create: jest.fn().mockResolvedValue(mockStream),
+        create: mockCreate.mockResolvedValue(mockStream),
       },
     },
   }))
@@ -44,10 +51,64 @@ const testRoute = {
   isActive: true,
 }
 
+const transferRouteOne = {
+  routeId: 'AI-TRANSFER-01',
+  type: 'microbus',
+  direction: 'one_way',
+  nameAr: 'خط بحري - سيدي جابر',
+  nameEn: 'Bahary - Sidi Gaber',
+  origin: { nameAr: 'بحري', nameEn: 'Bahary', coords: { lat: 0, lng: 0 } },
+  destination: { nameAr: 'سيدي جابر', nameEn: 'Sidi Gaber', coords: { lat: 0, lng: 0 } },
+  stations: [
+    { order: 1, nameAr: 'بحري', nameEn: 'Bahary', coords: { lat: 0, lng: 0 } },
+    { order: 2, nameAr: 'سيدي جابر', nameEn: 'Sidi Gaber', coords: { lat: 0, lng: 0 } },
+  ],
+  fare: { min: 4, max: 6 },
+  verified: true,
+  isActive: true,
+}
+
+const transferRouteTwo = {
+  routeId: 'AI-TRANSFER-02',
+  type: 'train',
+  direction: 'one_way',
+  nameAr: 'خط سيدي جابر - المعمورة',
+  nameEn: 'Sidi Gaber - Maamoura',
+  origin: { nameAr: 'سيدي جابر', nameEn: 'Sidi Gaber', coords: { lat: 0, lng: 0 } },
+  destination: { nameAr: 'المعمورة', nameEn: 'Maamoura', coords: { lat: 0, lng: 0 } },
+  stations: [
+    {
+      order: 1,
+      nameAr: 'سيدي جابر',
+      nameEn: 'Sidi Gaber',
+      coords: { lat: 0, lng: 0 },
+      allowDropoff: false,
+    },
+    { order: 2, nameAr: 'المعمورة', nameEn: 'Maamoura', coords: { lat: 0, lng: 0 } },
+  ],
+  fare: { min: 7, max: 10 },
+  verified: true,
+  isActive: true,
+}
+
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create()
   await mongoose.connect(mongod.getUri())
-  await Route.create(testRoute)
+  const routePayloads = [testRoute, transferRouteOne, transferRouteTwo].map((route) =>
+    buildRoutePayloadFromLegacyRoute(route),
+  )
+  const routes = []
+  for (const payload of routePayloads) {
+    const route = new Route(extractRouteFields(payload))
+    await syncRouteLocations(route, payload)
+    routes.push(route)
+  }
+  for (const route of routes) {
+    const payload = routePayloads.find((item) => item.routeId === route.routeId)
+    if (!payload) {
+      throw new Error('Missing AI payload during test setup')
+    }
+  }
 
   const regRes = await request(app).post('/api/auth/register').send({
     name: 'مستخدم AI',
@@ -117,7 +178,7 @@ describe('POST /api/ai/ask', () => {
     expect(res.headers['content-type']).toMatch(/text\/event-stream/)
   })
 
-  test('valid request → DB query runs with correct filters', async () => {
+  test('valid request → route search loads active routes only', async () => {
     const routeFindSpy = jest.spyOn(Route, 'find')
 
     await request(app)
@@ -126,27 +187,44 @@ describe('POST /api/ai/ask', () => {
       .send(validBody)
 
     expect(routeFindSpy).toHaveBeenCalled()
-    const callArgs = routeFindSpy.mock.calls[routeFindSpy.mock.calls.length - 1][0]
+    const callArgs =
+      routeFindSpy.mock.calls[routeFindSpy.mock.calls.length - 1][0]
     expect(callArgs).toHaveProperty('isActive', true)
-    expect(callArgs.$or).toBeDefined()
 
     routeFindSpy.mockRestore()
   })
 
   test('valid request → context injected into system prompt sent to OpenAI', async () => {
-    const OpenAI = require('openai')
-    const instance = new OpenAI()
-    const createSpy = instance.chat.completions.create
+    mockCreate.mockClear()
 
     await request(app)
       .post('/api/ai/ask')
       .set('Authorization', `Bearer ${accessToken}`)
       .send(validBody)
 
-    expect(createSpy).toHaveBeenCalled()
-    const callArgs = createSpy.mock.calls[createSpy.mock.calls.length - 1][0]
+    expect(mockCreate).toHaveBeenCalled()
+    const callArgs = mockCreate.mock.calls[mockCreate.mock.calls.length - 1][0]
     const systemMessage = callArgs.messages.find((m) => m.role === 'system')
     expect(systemMessage).toBeDefined()
     expect(systemMessage.content).toContain('خط:')
+  })
+
+  test('transfer request → context includes transfer travelPlan details', async () => {
+    mockCreate.mockClear()
+
+    await request(app)
+      .post('/api/ai/ask')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        origin: 'بحري',
+        destination: 'المعمورة',
+        message: 'إزاي أوصل من بحري للمعمورة؟',
+      })
+
+    expect(mockCreate).toHaveBeenCalled()
+    const callArgs = mockCreate.mock.calls[mockCreate.mock.calls.length - 1][0]
+    const systemMessage = callArgs.messages.find((m) => m.role === 'system')
+    expect(systemMessage.content).toContain('رحلة بعدد 1 تحويلة')
+    expect(systemMessage.content).toContain('سيدي جابر')
   })
 })

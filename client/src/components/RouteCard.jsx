@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom'
+import { buildMapSearchParamsForTravelSegments } from '../utils/travelPlanMap'
 
 // ── Type badge config ─────────────────────────────────────────────────────────
 const TYPE_CONFIG = {
   microbus:           { label: 'مشروع',  bg: '#FEF3C7', color: '#92400E' },
   bus:                { label: 'أتوبيس', bg: '#DBEAFE', color: '#1E40AF' },
   tram:               { label: 'ترام',   bg: '#D1FAE5', color: '#065F46' },
+  train:              { label: 'قطار',   bg: '#FCE7F3', color: '#9D174D' },
   university_shuttle: { label: 'شاتل',   bg: '#EDE9FE', color: '#5B21B6' },
 }
 
@@ -61,20 +63,31 @@ function isCurrentlyPeak(peakHours = []) {
 }
 
 // ── Stations stepper ──────────────────────────────────────────────────────────
-function StationsStepper({ stations }) {
+function StationsStepper({ stations, matchedSegment }) {
   if (!stations?.length) return null
+
+  const matchedOriginId = matchedSegment?.originStopId ? String(matchedSegment.originStopId) : null
+  const matchedDestinationId = matchedSegment?.destinationStopId ? String(matchedSegment.destinationStopId) : null
 
   return (
     <div className="overflow-x-auto pb-2" style={{ direction: 'ltr' }}>
       <div className="flex items-start gap-0 min-w-max" style={{ direction: 'rtl' }}>
         {stations.map((station, i) => {
+          const stationId = station?._id ? String(station._id) : null
           const isFirst = i === 0
           const isLast  = i === stations.length - 1
           const isInter = !isFirst && !isLast
+          const isMatchedOrigin = matchedOriginId && stationId === matchedOriginId
+          const isMatchedDestination = matchedDestinationId && stationId === matchedDestinationId
+          const isMatched = isMatchedOrigin || isMatchedDestination
 
           let dotBg, dotBorder
-          if (isFirst)     { dotBg = '#F4A833'; dotBorder = '#F4A833' }
-          else if (isLast) { dotBg = '#1B2A4A'; dotBorder = '#1B2A4A' }
+          if (isMatchedOrigin) {
+            dotBg = '#F4A833'; dotBorder = '#F4A833'
+          } else if (isMatchedDestination) {
+            dotBg = '#1B2A4A'; dotBorder = '#1B2A4A'
+          } else if (isFirst)     { dotBg = 'white';   dotBorder = '#F4A833' }
+          else if (isLast) { dotBg = 'white';   dotBorder = '#1B2A4A' }
           else             { dotBg = 'white';   dotBorder = '#9CA3AF' }
 
           return (
@@ -84,26 +97,37 @@ function StationsStepper({ stations }) {
                 <div
                   className="rounded-full border-2 flex items-center justify-center"
                   style={{
-                    width:           isFirst || isLast ? 14 : 10,
-                    height:          isFirst || isLast ? 14 : 10,
+                    width:           isMatched || isFirst || isLast ? 14 : 10,
+                    height:          isMatched || isFirst || isLast ? 14 : 10,
                     backgroundColor: dotBg,
                     borderColor:     dotBorder,
                     flexShrink:      0,
-                    marginTop:       isFirst || isLast ? 0 : 2,
+                    marginTop:       isMatched || isFirst || isLast ? 0 : 2,
                   }}
                 />
                 <span
                   className="text-center leading-tight mt-1"
                   style={{
                     fontSize:   11,
-                    color:      isInter ? '#6B7280' : '#1B2A4A',
-                    fontWeight: isFirst || isLast ? 600 : 400,
+                    color:      isMatched ? '#111827' : isInter ? '#6B7280' : '#1B2A4A',
+                    fontWeight: isMatched || isFirst || isLast ? 700 : 400,
                     fontFamily: 'Cairo, sans-serif',
                     maxWidth:   68,
                   }}
                 >
                   {station.nameAr}
                 </span>
+                {isMatched && (
+                  <span
+                    className="mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
+                    style={{
+                      backgroundColor: isMatchedOrigin ? '#FEF3C7' : '#DBEAFE',
+                      color: isMatchedOrigin ? '#92400E' : '#1E3A8A',
+                    }}
+                  >
+                    {isMatchedOrigin ? 'من هنا' : 'إلى هنا'}
+                  </span>
+                )}
               </div>
 
               {/* Connector line */}
@@ -141,6 +165,7 @@ export default function RouteCard({
   const navigate = useNavigate()
   const typeConf = TYPE_CONFIG[route.type] || TYPE_CONFIG.microbus
   const isPeak   = isCurrentlyPeak(route.peakHours)
+  const stationsToRender = route.stations || []
 
   const saveButtonLabel = isSaving
     ? 'جارٍ الحفظ...'
@@ -199,7 +224,7 @@ export default function RouteCard({
 
       {/* ── STATIONS STEPPER ─────────────────────────────────────────────── */}
       <div className="px-4 pb-3">
-        <StationsStepper stations={route.stations} />
+        <StationsStepper stations={stationsToRender} matchedSegment={route.matchedSegment} />
       </div>
 
       {/* ── FARE + PEAK ──────────────────────────────────────────────────── */}
@@ -249,7 +274,19 @@ export default function RouteCard({
             </button>
           )}
           <button
-            onClick={() => navigate(`/map?routeId=${route.routeId}`)}
+            onClick={() => {
+              const params = buildMapSearchParamsForTravelSegments([
+                {
+                  route: {
+                    routeId: route.routeId,
+                    selectedDirection: route.selectedDirection || 'forward',
+                    matchedSegment: route.matchedSegment || null,
+                  },
+                },
+              ])
+
+              navigate(`/map?${params.toString()}`)
+            }}
             className="flex-1 rounded-xl py-2 text-sm font-semibold border-2 transition-colors hover:opacity-80"
             style={{ borderColor: '#1B2A4A', color: '#1B2A4A', backgroundColor: 'transparent' }}
           >

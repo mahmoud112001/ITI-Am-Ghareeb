@@ -38,16 +38,22 @@ router.get("/stations", routesController.getStations);
 // Protected — search history for authenticated user
 router.get("/history", protect, routesController.getHistory);
 
-// Protected — saved routes for authenticated user
+// Protected — saved routes and travelPlans for authenticated user
 router.get("/saved", protect, routesController.getSavedRoutes);
 
 // Protected — save a route to the user's saved list
 router.post("/save/:routeId", protect, routesController.saveRoute);
 
+// Protected — save a transfer travelPlan as a first-class saved journey
+router.post("/saved-travel-plans", protect, routesController.saveTravelPlan);
+
 // Protected — remove a route from the user's saved list
 router.delete("/save/:routeId", protect, routesController.unsaveRoute);
 
-// Protected — remove all saved routes for the authenticated user
+// Protected — remove a saved transfer travelPlan
+router.delete("/saved-travel-plans", protect, routesController.unsaveTravelPlan);
+
+// Protected — remove all saved routes and travelPlans for the authenticated user
 router.delete("/saved/clear", protect, routesController.clearSavedRoutes);
 
 // Public (optional auth) — find 5 nearest routes from user's current location.

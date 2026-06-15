@@ -32,15 +32,6 @@
     "@babel/preset-env": "7.23.9",
     "babel-jest": "29.7.0"
   },
-  "jest": {
-    "testEnvironment": "node",
-    "transform": {
-      "^.+\\.js$": "babel-jest"
-    },
-    "testMatch": [
-      "**/tests/**/*.test.js"
-    ]
-  },
   "babel": {
     "presets": [
       ["@babel/preset-env", { "targets": { "node": "current" } }]

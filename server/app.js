@@ -12,6 +12,7 @@ const routesRouter = require('./src/routes/routes.routes');
 const aiRouter = require('./src/routes/ai.routes');
 const ratingRouter = require('./src/routes/rating.routes');
 const adminRouter = require('./src/routes/admin.routes');
+const adminStatsRouter = require('./src/routes/admin.stats.routes');
 const errorMiddleware = require('./src/middleware/error.middleware');
 
 const app = express();
@@ -43,7 +44,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/routes', routesRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/ratings', ratingRouter);
-app.use('/api/admin', adminRouter);
+app.use('/api/admin/stats', adminStatsRouter);
+app.use('/api/admin/routes', adminRouter);
 
 // ── 404 Handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => {

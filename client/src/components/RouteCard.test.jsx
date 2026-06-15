@@ -7,15 +7,19 @@ const mockRoute = {
   _id:     'route-abc-123',
   routeId: 'ALEX-MICRO-01',
   type:    'microbus',
-  nameAr:  'محطة مصر ← سيدي بشر',
-  nameEn:  'Misr Station → Sidi Bishr',
+  nameAr:  'محطة مصر ← المندرة',
+  nameEn:  'Mahattat Masr → Mandara',
   fare:    { min: 8, max: 12 },
   peakHours: [],
   stations: [
-    { order: 1, nameAr: 'محطة مصر',  nameEn: 'Misr Station', coords: { lat: 31.19, lng: 29.90 } },
-    { order: 2, nameAr: 'كليوباترا', nameEn: 'Cleopatra',    coords: { lat: 31.21, lng: 29.95 } },
-    { order: 3, nameAr: 'سيدي بشر',  nameEn: 'Sidi Bishr',   coords: { lat: 31.25, lng: 30.01 } },
+    { _id: 'stop-1', order: 1, nameAr: 'المندرة',  nameEn: 'Mandara', coords: { lat: 31.29, lng: 30.02 } },
+    { _id: 'stop-2', order: 2, nameAr: 'سيدي بشر', nameEn: 'Sidi Bishr', coords: { lat: 31.25, lng: 30.01 } },
+    { _id: 'stop-3', order: 3, nameAr: 'محطة مصر', nameEn: 'Misr Station', coords: { lat: 31.19, lng: 29.90 } },
   ],
+  matchedSegment: {
+    originStopId: 'stop-2',
+    destinationStopId: 'stop-3',
+  },
 }
 
 const accuracyNull = { percentage: null, label: 'غير مقيّم بعد', total: 0,  accurate: 0  }
@@ -35,7 +39,7 @@ function renderCard(accuracyStats = accuracyNull, onRateClick = jest.fn()) {
 describe('RouteCard', () => {
   test('renders route nameAr', () => {
     renderCard()
-    expect(screen.getByText('محطة مصر ← سيدي بشر')).toBeInTheDocument()
+    expect(screen.getByText('محطة مصر ← المندرة')).toBeInTheDocument()
   })
 
   test('renders fare range', () => {
@@ -78,9 +82,15 @@ describe('RouteCard', () => {
 
   test('renders all station nameAr values in the stepper', () => {
     renderCard()
-    expect(screen.getByText('محطة مصر')).toBeInTheDocument()
-    expect(screen.getByText('كليوباترا')).toBeInTheDocument()
+    expect(screen.getByText('المندرة')).toBeInTheDocument()
     expect(screen.getByText('سيدي بشر')).toBeInTheDocument()
+    expect(screen.getByText('محطة مصر')).toBeInTheDocument()
+  })
+
+  test('highlights the searched origin and destination points', () => {
+    renderCard()
+    expect(screen.getByText('من هنا')).toBeInTheDocument()
+    expect(screen.getByText('إلى هنا')).toBeInTheDocument()
   })
 
   test('shows total ratings count when total > 0', () => {

@@ -56,12 +56,14 @@ const getHistory = async (req, res, next) => {
 
 /**
  * getSavedRoutes — GET /api/routes/saved (protected)
- * Returns all routes saved by the authenticated user with accuracy stats.
+ * Returns saved routes and saved travelPlans for the authenticated user.
  */
 const getSavedRoutes = async (req, res, next) => {
   try {
-    const routes = await routesService.getSavedRoutes(req.user.userId);
-    res.status(200).json({ success: true, routes });
+    const { routes, travelPlans } = await routesService.getSavedRoutes(
+      req.user.userId,
+    );
+    res.status(200).json({ success: true, routes, travelPlans });
   } catch (err) {
     next(err);
   }
@@ -75,6 +77,7 @@ const getRouteById = async (req, res, next) => {
   try {
     const { route, accuracyStats } = await routesService.getRouteById(
       req.params.routeId,
+      req.query.direction,
     );
     res.status(200).json({ success: true, route, accuracyStats });
   } catch (err) {
@@ -98,6 +101,18 @@ const saveRoute = async (req, res, next) => {
 };
 
 /**
+ * saveTravelPlan — POST /api/routes/saved-travel-plans (protected)
+ */
+const saveTravelPlan = async (req, res, next) => {
+  try {
+    const result = await routesService.saveTravelPlan(req.user.userId, req.body);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * unsaveRoute — DELETE /api/routes/save/:routeId (protected)
  */
 const unsaveRoute = async (req, res, next) => {
@@ -105,6 +120,21 @@ const unsaveRoute = async (req, res, next) => {
     const result = await routesService.unsaveRoute(
       req.user.userId,
       req.params.routeId,
+    );
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * unsaveTravelPlan — DELETE /api/routes/saved-travel-plans (protected)
+ */
+const unsaveTravelPlan = async (req, res, next) => {
+  try {
+    const result = await routesService.unsaveTravelPlan(
+      req.user.userId,
+      req.body?.travelPlanId,
     );
     res.status(200).json({ success: true, ...result });
   } catch (err) {
@@ -165,7 +195,9 @@ module.exports = {
   getSavedRoutes,
   getRouteById,
   saveRoute,
+  saveTravelPlan,
   unsaveRoute,
+  unsaveTravelPlan,
   clearSavedRoutes,
   getNearestRoutes,
 };

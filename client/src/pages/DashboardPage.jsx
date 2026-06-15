@@ -4,7 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import AmGhareebAvatar from '../components/AmGhareebAvatar'
 import RouteCard from '../components/RouteCard'
+import TravelPlanCard from '../components/TravelPlanCard'
 import RatingModal from '../components/RatingModal'
+import TravelPlanRatingModal from '../components/TravelPlanRatingModal'
 import api from '../lib/axios'
 import ar from '../i18n/ar'
 
@@ -136,22 +138,29 @@ function SearchHistoryTab() {
   )
 }
 
-// ── Saved Routes tab ──────────────────────────────────────────────────────────
-function SavedRoutesTab() {
+// ── Saved Items tab ───────────────────────────────────────────────────────────
+function SavedItemsTab() {
   const queryClient = useQueryClient()
   const [ratingRouteId, setRatingRouteId] = useState(null)
-  const [clearConfirm, setClearConfirm]   = useState(false)
-  const [clearingAll, setClearingAll]     = useState(false)
+  const [ratingTravelPlan, setRatingTravelPlan] = useState(null)
+  const [clearConfirm, setClearConfirm] = useState(false)
+  const [clearingAll, setClearingAll] = useState(false)
+  const [pendingRouteId, setPendingRouteId] = useState(null)
+  const [pendingTravelPlanId, setPendingTravelPlanId] = useState(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['saved-routes'],
-    queryFn:  () => api.get('/api/routes/saved').then((r) => r.data.routes),
+    queryKey: ['saved-items'],
+    queryFn:  () => api.get('/api/routes/saved').then((r) => r.data),
   })
+
+  const savedRoutes = data?.routes || []
+  const savedTravelPlans = data?.travelPlans || []
+  const hasSavedItems = savedRoutes.length > 0 || savedTravelPlans.length > 0
 
   if (isLoading) {
     return (
       <div className="flex flex-col gap-4 pt-4">
-        {[1, 2].map((i) => (
+        {[1, 2, 3].map((i) => (
           <div
             key={i}
             className="rounded-2xl h-28 animate-pulse"
@@ -163,22 +172,41 @@ function SavedRoutesTab() {
   }
 
   async function handleUnsaveRoute(routeId) {
-    await api.delete(`/api/routes/save/${routeId}`)
-    queryClient.invalidateQueries({ queryKey: ['saved-routes'] })
+    setPendingRouteId(routeId)
+    try {
+      await api.delete(`/api/routes/save/${routeId}`)
+      queryClient.invalidateQueries({ queryKey: ['saved-items'] })
+    } finally {
+      setPendingRouteId(null)
+    }
+  }
+
+  async function handleUnsaveTravelPlan(travelPlan) {
+    if (!travelPlan?.travelPlanId) return
+
+    setPendingTravelPlanId(travelPlan.travelPlanId)
+    try {
+      await api.delete('/api/routes/saved-travel-plans', {
+        data: { travelPlanId: travelPlan.travelPlanId },
+      })
+      queryClient.invalidateQueries({ queryKey: ['saved-items'] })
+    } finally {
+      setPendingTravelPlanId(null)
+    }
   }
 
   async function handleClearSavedRoutes() {
     setClearingAll(true)
     try {
       await api.delete('/api/routes/saved/clear')
-      queryClient.invalidateQueries({ queryKey: ['saved-routes'] })
+      queryClient.invalidateQueries({ queryKey: ['saved-items'] })
       setClearConfirm(false)
     } finally {
       setClearingAll(false)
     }
   }
 
-  if (!data?.length) {
+  if (!hasSavedItems) {
     return (
       <EmptyState
         message={t.emptySaved}
@@ -224,22 +252,64 @@ function SavedRoutesTab() {
           </div>
         )}
       </div>
-      {data.map((route) => (
-        <RouteCard
-          key={route._id || route.routeId}
-          route={route}
-          accuracyStats={route.accuracyStats}
-          onRateClick={(id) => setRatingRouteId(id)}
-          onUnsaveClick={handleUnsaveRoute}
-          isSaved
-          compact={false}
-        />
-      ))}
+      {savedTravelPlans.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <div className="text-right">
+            <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>
+              {t.savedTravelPlansTitle}
+            </h3>
+            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
+              {t.savedTravelPlansHint}
+            </p>
+          </div>
+          {savedTravelPlans.map((travelPlan) => (
+            <TravelPlanCard
+              key={travelPlan.travelPlanId}
+              travelPlan={travelPlan}
+              onRateClick={setRatingTravelPlan}
+              onUnsaveClick={handleUnsaveTravelPlan}
+              isSaved
+              isSaving={pendingTravelPlanId === travelPlan.travelPlanId}
+            />
+          ))}
+        </section>
+      )}
+      {savedRoutes.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <div className="text-right">
+            <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>
+              {t.savedRoutesTitle}
+            </h3>
+            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>
+              {t.savedRoutesHint}
+            </p>
+          </div>
+          {savedRoutes.map((route) => (
+            <RouteCard
+              key={route._id || route.routeId}
+              route={route}
+              accuracyStats={route.accuracyStats}
+              onRateClick={(id) => setRatingRouteId(id)}
+              onUnsaveClick={handleUnsaveRoute}
+              isSaved
+              isSaving={pendingRouteId === route.routeId}
+              compact={false}
+            />
+          ))}
+        </section>
+      )}
       {ratingRouteId && (
         <RatingModal
           routeId={ratingRouteId}
           onClose={() => setRatingRouteId(null)}
           onSuccess={() => setRatingRouteId(null)}
+        />
+      )}
+      {ratingTravelPlan && (
+        <TravelPlanRatingModal
+          travelPlan={ratingTravelPlan}
+          onClose={() => setRatingTravelPlan(null)}
+          onSuccess={() => setRatingTravelPlan(null)}
         />
       )}
     </div>
@@ -281,7 +351,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="p-5">
-            {activeTab === 0 ? <SearchHistoryTab /> : <SavedRoutesTab />}
+            {activeTab === 0 ? <SearchHistoryTab /> : <SavedItemsTab />}
           </div>
         </div>
       </div>

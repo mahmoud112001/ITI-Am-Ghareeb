@@ -1,6 +1,6 @@
 const OpenAI = require('openai')
-const { Route } = require('../models/index.js')
 const { buildSystemPrompt } = require('../ai/promptBuilder.js')
+const { searchRoutes } = require('./routes.service.js')
 
 /**
  * streamTransitAdvice — RAG pipeline:
@@ -25,33 +25,60 @@ async function streamTransitAdvice(origin, destination, userMessage, res) {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
     // ── Step 1: DB lookup ───────────────────────────────────────────────────
-    const originRegex = new RegExp(origin, 'i')
-    const destRegex = new RegExp(destination, 'i')
+    const routeResults = await searchRoutes(origin, destination, null, null)
+    const travelPlans = routeResults.slice(0, 5)
 
-    const routes = await Route.find({
-      isActive: true,
-      $or: [
-        { 'stations.nameAr': originRegex },
-        { 'stations.nameEn': originRegex },
-        { 'origin.nameAr': originRegex },
-        { 'stations.nameAr': destRegex },
-        { 'stations.nameEn': destRegex },
-        { 'destination.nameAr': destRegex },
-      ],
-    }).limit(5)
+    function formatTravelSegment(travelSegment, index) {
+      return (
+        `الركوبة ${index + 1}: ${travelSegment.route.nameAr}\n` +
+        `من: ${travelSegment.boardAt?.nameAr} إلى: ${travelSegment.alightAt?.nameAr}\n` +
+        `محطات الجزء: ${travelSegment.route.stations.map((s) => s.nameAr).join(' ← ')}\n` +
+        `تعريفة الجزء: ${travelSegment.route.fare?.min ?? 0}–${travelSegment.route.fare?.max ?? 0} جنيه`
+      )
+    }
+
+    function formatTransferWalk(walk, index) {
+      if (!walk) return null
+
+      if (walk.distanceMeters > 0) {
+        return (
+          `التحويل ${index + 1}: انزل في ${walk.from?.nameAr} ثم امشِ إلى ${walk.to?.nameAr} ` +
+          `(${Math.round(walk.distanceMeters)} متر)`
+        )
+      }
+
+      return `التحويل ${index + 1}: التحويل عند ${walk.from?.nameAr || walk.to?.nameAr || 'محطة مشتركة'}`
+    }
 
     // ── Step 2: Build Arabic context string ─────────────────────────────────
     const context =
-      routes.length > 0
-        ? routes
-            .map(
-              (r) =>
-                `خط: ${r.nameAr}\n` +
-                `محطات: ${r.stations.map((s) => s.nameAr).join(' ← ')}\n` +
-                `تعريفة: ${r.fare.min}–${r.fare.max} جنيه\n` +
-                `أوقات الذروة: ${(r.peakHours || []).join(', ')}\n` +
-                `نصائح: ${(r.tips || []).join('. ')}`
-            )
+      travelPlans.length > 0
+        ? travelPlans
+            .map((result) => {
+              if (result.travelPlanType === 'transfer') {
+                const travelSegmentsText = result.travelSegments.map(formatTravelSegment).join('\n')
+                const transfersText = (result.transferWalks || [])
+                  .map(formatTransferWalk)
+                  .filter(Boolean)
+                  .join('\n')
+
+                return (
+                  `رحلة بعدد ${result.transferCount} تحويلة\n` +
+                  `${travelSegmentsText}\n` +
+                  (transfersText ? `${transfersText}\n` : '') +
+                  `إجمالي التعريفة: ${result.totalFare?.min ?? 0}–${result.totalFare?.max ?? 0} جنيه`
+                )
+              }
+
+              const route = result.route
+              return (
+                `خط: ${route.nameAr}\n` +
+                `محطات: ${route.stations.map((s) => s.nameAr).join(' ← ')}\n` +
+                `تعريفة: ${route.fare.min}–${route.fare.max} جنيه\n` +
+                `أوقات الذروة: ${(route.peakHours || []).join(', ')}\n` +
+                `نصائح: ${(route.tips || []).join('. ')}`
+              )
+            })
             .join('\n\n---\n\n')
         : 'لم يتم العثور على بيانات لهذا المسار في قاعدة البيانات.'
 

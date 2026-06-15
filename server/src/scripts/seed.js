@@ -1,6 +1,19 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
-const { Route, User } = require("../models/index");
+const {
+  Location,
+  Rating,
+  Route,
+  SavedTravelPlan,
+  SearchHistory,
+  TravelPlanRating,
+  User,
+} = require("../models/index");
+const {
+  buildRoutePayloadFromLegacyRoute,
+  extractRouteFields,
+  syncRouteLocations,
+} = require("../utils/routeNetwork");
 
 // All coordinates sourced from Wikipedia, Wikidata, and verified geo databases.
 // Sources per station are noted inline where the value was looked up.
@@ -861,12 +874,36 @@ async function seed() {
     await connectDB();
 
     console.log("جاري حذف البيانات القديمة...");
-    await Route.deleteMany({});
-    await User.deleteMany({ role: "admin" });
+    await Promise.all([
+      Route.deleteMany({}),
+      Location.deleteMany({}),
+      Rating.deleteMany({}),
+      TravelPlanRating.deleteMany({}),
+      SavedTravelPlan.deleteMany({}),
+      SearchHistory.deleteMany({}),
+      User.deleteMany({ role: "admin" }),
+    ]);
+
+    for (const collectionName of ["itineraryratings", "saveditineraries"]) {
+      const collection = mongoose.connection.collections[collectionName];
+      if (collection) {
+        await collection.deleteMany({});
+      }
+    }
 
     console.log("جاري إضافة الخطوط...");
-    const result = await Route.insertMany(routes);
-    console.log(`تم إضافة ${result.length} خط بنجاح ✓`);
+    const routePayloads = routes.map((route) =>
+      buildRoutePayloadFromLegacyRoute(route),
+    );
+    const createdRoutes = [];
+
+    console.log("جاري إضافة الخطوط ومزامنة المواقع...");
+    for (const payload of routePayloads) {
+      const route = new Route(extractRouteFields(payload));
+      await syncRouteLocations(route, payload);
+      createdRoutes.push(route);
+    }
+    console.log(`تم إضافة ${createdRoutes.length} خط بنجاح ✓`);
 
     // Pre-save hook in User model automatically hashes the password
     await User.create({

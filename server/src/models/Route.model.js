@@ -1,14 +1,85 @@
-const mongoose = require('mongoose')
+const mongoose = require("mongoose");
 
-const { Schema } = mongoose
+const { Schema } = mongoose;
 
-const CoordsSchema = new Schema(
+const FareSchema = new Schema(
   {
-    lat: { type: Number, default: 0 },
-    lng: { type: Number, default: 0 },
+    min: { type: Number, required: true },
+    max: { type: Number, required: true },
+    currency: { type: String, default: "EGP" },
+    lastVerified: { type: String, default: null },
   },
-  { _id: false }
-)
+  { _id: false },
+);
+
+const OperatingHoursSchema = new Schema(
+  {
+    start: { type: String, default: null },
+    end: { type: String, default: null },
+  },
+  { _id: false },
+);
+
+const GeometrySchema = new Schema(
+  {
+    type: {
+      type: String,
+      enum: ["LineString"],
+      default: "LineString",
+      required: true,
+    },
+    coordinates: {
+      type: [[Number]],
+      required: true,
+      validate: {
+        validator(value) {
+          return (
+            Array.isArray(value) &&
+            value.length >= 2 &&
+            value.every(
+              (point) =>
+                Array.isArray(point) &&
+                point.length === 2 &&
+                point.every((coordinate) => Number.isFinite(coordinate)),
+            )
+          );
+        },
+        message:
+          "Route geometry must be a LineString with at least two [lng, lat] points",
+      },
+    },
+  },
+  { _id: false },
+);
+
+const RouteStopSchema = new Schema(
+  {
+    location: {
+      type: Schema.Types.ObjectId,
+      ref: "Location",
+      required: true,
+    },
+    allowPickup: {
+      type: Boolean,
+      default: true,
+    },
+    allowDropoff: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  { _id: false },
+);
+
+RouteStopSchema.pre("validate", function validateStopDirectionality(next) {
+  if (this.allowPickup === false && this.allowDropoff === false) {
+    this.invalidate(
+      "allowDropoff",
+      "A route stop must allow pickup, dropoff, or both",
+    );
+  }
+  next();
+});
 
 const RouteSchema = new Schema(
   {
@@ -19,12 +90,12 @@ const RouteSchema = new Schema(
     },
     type: {
       type: String,
-      enum: ['microbus', 'bus', 'tram', 'university_shuttle'],
+      enum: ["microbus", "bus", "tram", "train", "university_shuttle"],
       required: true,
     },
     localName: {
       type: String,
-      default: 'مشروع',
+      default: "مشروع",
     },
     nameAr: {
       type: String,
@@ -35,87 +106,104 @@ const RouteSchema = new Schema(
       required: true,
     },
     origin: {
-      nameAr: { type: String, required: true },
-      nameEn: { type: String, required: true },
-      coords: { type: CoordsSchema, default: () => ({ lat: 0, lng: 0 }) },
+      type: Schema.Types.ObjectId,
+      ref: "Location",
+      required: true,
+      index: true,
     },
     destination: {
-      nameAr: { type: String, required: true },
-      nameEn: { type: String, required: true },
-      coords: { type: CoordsSchema, default: () => ({ lat: 0, lng: 0 }) },
+      type: Schema.Types.ObjectId,
+      ref: "Location",
+      required: true,
+      index: true,
     },
-    stations: [
-      {
-        order: { type: Number, required: true },
-        nameAr: { type: String, required: true },
-        nameEn: { type: String, required: true },
-        coords: { type: CoordsSchema, default: () => ({ lat: 0, lng: 0 }) },
+    stops: {
+      type: [RouteStopSchema],
+      required: true,
+      validate: {
+        validator(value) {
+          return Array.isArray(value) && value.length >= 2;
+        },
+        message: "A route must contain at least two ordered stops",
       },
-    ],
+    },
+    geometry: {
+      type: GeometrySchema,
+      required: true,
+    },
     fare: {
-      min: { type: Number, required: true },
-      max: { type: Number, required: true },
-      currency: { type: String, default: 'EGP' },
-      lastVerified: { type: String },
+      type: FareSchema,
+      required: true,
     },
     operatingHours: {
-      start: { type: String },
-      end: { type: String },
+      type: OperatingHoursSchema,
+      default: null,
     },
-    peakHours: [String],
-    frequency: { type: String },
-    direction: {
+    frequency: {
       type: String,
-      enum: ['bidirectional', 'one_way'],
-      default: 'bidirectional',
+      default: null,
+      trim: true,
     },
-    tips: [String],
+    peakHours: {
+      type: [String],
+      default: [],
+    },
+    tips: {
+      type: [String],
+      default: [],
+    },
+    isBidirectional: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     verified: { type: Boolean, default: false },
-    isActive: { type: Boolean, default: true },
+    isActive: { type: Boolean, default: true, index: true },
   },
-  { timestamps: true }
-)
+  { timestamps: true },
+);
 
-// Text search index on Arabic/English station names and route name
 RouteSchema.index(
   {
-    'stations.nameAr': 'text',
-    'stations.nameEn': 'text',
-    nameAr: 'text',
+    routeId: "text",
+    nameAr: "text",
+    nameEn: "text",
   },
-  { name: 'route_text_search' }
-)
+  { name: "route_text_search" },
+);
 
-RouteSchema.index({ isActive: 1 })
-RouteSchema.index({ routeId: 1 })
+RouteSchema.index({ routeId: 1 });
+RouteSchema.index({ origin: 1, destination: 1, isActive: 1 });
+RouteSchema.index({ "stops.location": 1, isActive: 1 });
 
-// Static method: get accuracy stats for a route
-RouteSchema.statics.getAccuracyStats = async function (routeId) {
-  const route = await this.findOne({ routeId })
-  if (!route) throw new Error('الخط غير موجود')
+RouteSchema.statics.getAccuracyStats = async function getAccuracyStats(routeId) {
+  const route = await this.findOne({ routeId });
+  if (!route) throw new Error("الخط غير موجود");
 
-  // Late require to avoid circular dependency between Route and Rating
-  const Rating = require('./Rating.model')
+  const Rating = require("./Rating.model");
 
-  const total = await Rating.countDocuments({ route: route._id })
-  const accurate = await Rating.countDocuments({ route: route._id, isAccurate: true })
+  const total = await Rating.countDocuments({ route: route._id });
+  const accurate = await Rating.countDocuments({
+    route: route._id,
+    isAccurate: true,
+  });
 
   if (total < 3) {
-    return { total, accurate, percentage: null, label: 'غير مقيّم بعد' }
+    return { total, accurate, percentage: null, label: "غير مقيّم بعد" };
   }
 
-  const percentage = Math.round((accurate / total) * 100)
+  const percentage = Math.round((accurate / total) * 100);
 
-  let label
+  let label;
   if (percentage >= 80) {
-    label = 'دقيق جداً'
+    label = "دقيق جداً";
   } else if (percentage >= 60) {
-    label = 'دقيق نسبياً'
+    label = "دقيق نسبياً";
   } else {
-    label = 'غير موثوق'
+    label = "غير موثوق";
   }
 
-  return { total, accurate, percentage, label }
-}
+  return { total, accurate, percentage, label };
+};
 
-module.exports = mongoose.model('Route', RouteSchema)
+module.exports = mongoose.model("Route", RouteSchema);

@@ -1,12 +1,14 @@
 const rateLimit = require('express-rate-limit')
 
+const isTestEnv = process.env.NODE_ENV === 'test'
+
 /**
  * authLimiter — tight limit for login/register endpoints.
  * 10 requests per 15 minutes per IP.
  */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: isTestEnv ? 1000 : 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -21,7 +23,7 @@ const authLimiter = rateLimit({
  */
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: isTestEnv ? 10000 : 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -36,7 +38,7 @@ const apiLimiter = rateLimit({
  */
 const aiLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 20,
+  max: isTestEnv ? 1000 : 20,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => req.user?.userId || req.ip,
