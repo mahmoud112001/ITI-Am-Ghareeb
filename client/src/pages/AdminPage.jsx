@@ -11,6 +11,7 @@ import {
   useRestoreRoute,
   useDeleteRoute,
 } from '../hooks/useAdminRoutes'
+import RoutePathEditor from '../components/RoutePathEditor'
 
 // ── Fix Leaflet default marker icon (Vite asset pipeline breaks it) ───────────
 delete L.Icon.Default.prototype._getIconUrl
@@ -854,11 +855,16 @@ function GeometryEditorModal({
 }
 
 // ── Route form modal (add & edit) ─────────────────────────────────────────────
-function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
+function RouteFormModal({ initial, routeDoc, onClose, onSave, title, isPending }) {
   const [form, setForm]           = useState(initial || EMPTY_FORM)
   const [err,  setErr]            = useState('')
   const [mapPicker, setMapPicker] = useState(null) // { stationIndex, label }
   const [geometryEditorOpen, setGeometryEditorOpen] = useState(false)
+  const [liveRouteDoc, setLiveRouteDoc] = useState(routeDoc)
+
+  useEffect(() => {
+    setLiveRouteDoc(routeDoc)
+  }, [routeDoc])
 
   function set(key, val) { setForm((f) => ({ ...f, [key]: val })) }
 
@@ -1102,6 +1108,18 @@ function RouteFormModal({ initial, onClose, onSave, title, isPending }) {
                 </p>
               </div>
 
+              {liveRouteDoc && (
+                <>
+                  <SectionLabel>OSRM</SectionLabel>
+                  <RoutePathEditor
+                    route={liveRouteDoc}
+                    onPathChange={(updates) => {
+                      setLiveRouteDoc((current) => ({ ...current, ...updates }))
+                    }}
+                  />
+                </>
+              )}
+
               {err && <p className="text-sm text-center mt-3" style={{ color: '#DC2626' }}>{err}</p>}
             </div>
           </div>
@@ -1272,6 +1290,18 @@ export default function AdminPage() {
                         <td className="px-4 py-3 font-mono text-xs" style={{ color: '#6B7280' }}>{route.routeId}</td>
                         <td className="px-4 py-3 font-medium" style={{ color: '#1B2A4A', maxWidth: 180 }}>
                           <p className="truncate">{route.nameAr}</p>
+                          {route.path?.length > 1 && (
+                            <span
+                              className="text-xs px-1.5 py-0.5 rounded-full inline-block mt-0.5"
+                              style={{
+                                backgroundColor: route.pathStale ? '#FEF3C7' : '#DBEAFE',
+                                color: route.pathStale ? '#92400E' : '#1E40AF',
+                                fontSize: 10,
+                              }}
+                            >
+                              {route.pathStale ? 'مسار قديم' : 'مسار OSRM'}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.color }}>{typeLabel}</span>
@@ -1287,7 +1317,7 @@ export default function AdminPage() {
                         <td className="px-4 py-3">
                           <div className="flex gap-2">
                             <button
-                              onClick={() => setEditRoute({ _id: route._id, form: buildEditForm(route) })}
+                              onClick={() => setEditRoute({ _id: route._id, form: buildEditForm(route), doc: route })}
                               className="p-1.5 rounded-lg hover:opacity-70"
                               style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
                               title="تعديل"
@@ -1346,7 +1376,16 @@ export default function AdminPage() {
       </div>
 
       {addOpen    && <RouteFormModal title="إضافة خط جديد" onClose={() => setAddOpen(false)} onSave={handleCreate} isPending={createMutation.isPending} />}
-      {editRoute  && <RouteFormModal title="تعديل الخط" initial={editRoute.form} onClose={() => setEditRoute(null)} onSave={handleUpdate} isPending={updateMutation.isPending} />}
+      {editRoute && (
+        <RouteFormModal
+          title="تعديل الخط"
+          initial={editRoute.form}
+          routeDoc={editRoute.doc}
+          onClose={() => setEditRoute(null)}
+          onSave={handleUpdate}
+          isPending={updateMutation.isPending}
+        />
+      )}
       {deleteRoute && <DeleteDialog routeName={deleteRoute.nameAr} onCancel={() => setDeleteRoute(null)} onConfirm={handleDelete} isPending={deleteMutation.isPending} />}
     </div>
   )

@@ -50,3 +50,14 @@ export const restoreRoute = (id) =>
  */
 export const deleteRoute = (id) =>
   api.delete(`/api/admin/routes/${id}`).then((r) => r.data)
+
+export async function generateRoutePath(id, waypoints) {
+  const body = waypoints !== undefined ? { waypoints } : {}
+  const res = await api.post(`/api/admin/routes/${id}/generate-path`, body)
+  return res.data
+}
+
+export async function clearRoutePath(id) {
+  const res = await api.delete(`/api/admin/routes/${id}/path`)
+  return res.data
+}

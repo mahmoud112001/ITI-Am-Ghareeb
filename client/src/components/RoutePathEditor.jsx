@@ -47,10 +47,21 @@ function getPolylineProps(route) {
     }
   }
 
+  const geometryPoints = route.geometryPoints || []
+  if (geometryPoints.length > 1) {
+    return {
+      positions:  geometryPoints.map((p) => [p.coords.lat, p.coords.lng]),
+      color:      STATION_GREY,
+      weight:     3,
+      dashArray:  '6 5',
+      isPath:     false,
+    }
+  }
+
   // Fallback: straight lines through valid stations (same logic as MapPage)
-  const stations = (route.stations || [])
+  const stations = (route.stations || route.stops || [])
     .filter((s) => s.coords?.lat !== 0 && s.coords?.lng !== 0)
-    .sort((a, b) => a.order - b.order)
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
 
   return {
     positions:  stations.map((s) => [s.coords.lat, s.coords.lng]),
@@ -66,7 +77,7 @@ function getMapCentre(route) {
   if (route.origin?.coords?.lat && route.origin.coords.lat !== 0) {
     return [route.origin.coords.lat, route.origin.coords.lng]
   }
-  const first = route.stations?.find((s) => s.coords?.lat !== 0)
+  const first = (route.stations || route.stops || []).find((s) => s.coords?.lat !== 0)
   if (first) return [first.coords.lat, first.coords.lng]
   return [30.0444, 31.2357] // Cairo
 }
@@ -115,6 +126,7 @@ export default function RoutePathEditor({ route, onPathChange }) {
           resetWaypoints(data.waypoints || waypoints)
           setIsEditing(false)
           onPathChange?.({
+            path:            data.path || [],
             pathGeneratedAt: data.pathGeneratedAt,
             pathStale:       false,
             waypoints:       data.waypoints,
@@ -149,7 +161,8 @@ export default function RoutePathEditor({ route, onPathChange }) {
   const hasPath       = route.path?.length > 1
   const isStale       = route.pathStale && hasPath
 
-  const validStations = (route.stations || []).filter(
+  const visibleStops = route.stations || route.stops || []
+  const validStations = visibleStops.filter(
     (s) => s.coords?.lat !== 0 && s.coords?.lng !== 0
   )
 
@@ -242,7 +255,6 @@ export default function RoutePathEditor({ route, onPathChange }) {
               style={{
                 padding: '5px 12px',
                 borderRadius: 8,
-                border: 'none',
                 fontSize: 12,
                 fontFamily: 'Cairo, sans-serif',
                 cursor: 'pointer',
@@ -263,7 +275,6 @@ export default function RoutePathEditor({ route, onPathChange }) {
               style={{
                 padding: '5px 12px',
                 borderRadius: 8,
-                border: 'none',
                 fontSize: 12,
                 fontFamily: 'Cairo, sans-serif',
                 cursor: 'pointer',
@@ -304,7 +315,6 @@ export default function RoutePathEditor({ route, onPathChange }) {
               style={{
                 padding: '5px 12px',
                 borderRadius: 8,
-                border: 'none',
                 fontSize: 12,
                 fontFamily: 'Cairo, sans-serif',
                 cursor: 'pointer',
@@ -429,8 +439,8 @@ export default function RoutePathEditor({ route, onPathChange }) {
       >
         <span>
           {hasPath
-            ? `${route.path.length} نقطة في المسار · محطات: ${route.stations?.length || 0}`
-            : `محطات: ${route.stations?.length || 0} · لا يوجد مسار مولّد`}
+            ? `${route.path.length} نقطة في المسار · محطات: ${visibleStops.length || 0}`
+            : `محطات: ${visibleStops.length || 0} · لا يوجد مسار مولّد`}
         </span>
         {waypoints.length > 0 && (
           <span style={{ color: PURPLE }}>

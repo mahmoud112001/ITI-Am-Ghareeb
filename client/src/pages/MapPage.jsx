@@ -117,10 +117,16 @@ export default function MapPage() {
   // Stations with real GPS coordinates (filter zero-coord placeholders)
   const validStations = visibleStations.filter((s) => s.coords?.lat !== 0 && s.coords?.lng !== 0)
 
-  // Polyline positions
-  const polylineCoords = geometryPoints
+  const routePathCoords = (route?.path || [])
+    .filter((p) => p?.lat && p?.lng)
+    .map((p) => [p.lat, p.lng])
+
+  const geometryPolylineCoords = geometryPoints
     .filter((s) => s.coords?.lat !== 0 && s.coords?.lng !== 0)
     .map((s) => [s.coords.lat, s.coords.lng])
+  const polylineCoords = routePathCoords.length >= 2
+    ? routePathCoords
+    : geometryPolylineCoords
 
   const matchedOriginStation = validStations.find((station) => String(station._id) === matchedOriginId) || null
   const matchedDestinationStation = validStations.find((station) => String(station._id) === matchedDestinationId) || null
@@ -140,9 +146,15 @@ export default function MapPage() {
 
   // Nearest route (from user's location) computed stations/coords
   const nearestValidStations = nearestRoute ? (nearestRoute.stations || []).filter(s => s.coords?.lat && s.coords?.lng) : []
-  const nearestPolylineCoords = (nearestRoute?.geometryPoints || [])
+  const nearestPathCoords = (nearestRoute?.path || [])
+    .filter((p) => p?.lat && p?.lng)
+    .map((p) => [p.lat, p.lng])
+  const nearestGeometryCoords = (nearestRoute?.geometryPoints || [])
     .filter((s) => s.coords?.lat && s.coords?.lng)
     .map((s) => [s.coords.lat, s.coords.lng])
+  const nearestPolylineCoords = nearestPathCoords.length >= 2
+    ? nearestPathCoords
+    : nearestGeometryCoords
 
   function handleLocate() {
     setLocError('')

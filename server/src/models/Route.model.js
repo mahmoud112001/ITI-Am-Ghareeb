@@ -20,6 +20,14 @@ const OperatingHoursSchema = new Schema(
   { _id: false },
 );
 
+const CoordsSchema = new Schema(
+  {
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
 const GeometrySchema = new Schema(
   {
     type: {
@@ -130,6 +138,22 @@ const RouteSchema = new Schema(
     geometry: {
       type: GeometrySchema,
       required: true,
+    },
+    waypoints: {
+      type: [CoordsSchema],
+      default: [],
+    },
+    path: {
+      type: [CoordsSchema],
+      default: [],
+    },
+    pathGeneratedAt: {
+      type: Date,
+      default: null,
+    },
+    pathStale: {
+      type: Boolean,
+      default: false,
     },
     fare: {
       type: FareSchema,

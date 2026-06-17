@@ -7,6 +7,14 @@
 
 import { useState, useCallback } from 'react'
 
+function isValidWaypoint(wp) {
+  return Number.isFinite(Number(wp?.lat)) && Number.isFinite(Number(wp?.lng))
+}
+
+function cloneWaypoint(wp) {
+  return { lat: Number(wp.lat), lng: Number(wp.lng) }
+}
+
 /**
  * useWaypoints
  *
@@ -24,11 +32,13 @@ import { useState, useCallback } from 'react'
 export function useWaypoints(initialWaypoints = []) {
   const [waypoints, setWaypoints] = useState(() =>
     // Clone so we don't mutate the route prop
-    initialWaypoints.map((wp) => ({ lat: wp.lat, lng: wp.lng }))
+    initialWaypoints.filter(isValidWaypoint).map(cloneWaypoint)
   )
 
   // Track whether local state diverges from what's on the server
-  const [serverWaypoints, setServerWaypoints] = useState(initialWaypoints)
+  const [serverWaypoints, setServerWaypoints] = useState(() =>
+    initialWaypoints.filter(isValidWaypoint).map(cloneWaypoint)
+  )
 
   const isDirty =
     waypoints.length !== serverWaypoints.length ||
@@ -39,13 +49,15 @@ export function useWaypoints(initialWaypoints = []) {
     )
 
   const addWaypoint = useCallback((coord) => {
-    setWaypoints((prev) => [...prev, { lat: coord.lat, lng: coord.lng }])
+    if (!isValidWaypoint(coord)) return
+    setWaypoints((prev) => [...prev, cloneWaypoint(coord)])
   }, [])
 
   const updateWaypoint = useCallback((index, coord) => {
+    if (!isValidWaypoint(coord)) return
     setWaypoints((prev) =>
       prev.map((wp, i) =>
-        i === index ? { lat: coord.lat, lng: coord.lng } : wp
+        i === index ? cloneWaypoint(coord) : wp
       )
     )
   }, [])
@@ -62,7 +74,7 @@ export function useWaypoints(initialWaypoints = []) {
    * @param {Array<{lat,lng}>} newWaypoints
    */
   const resetWaypoints = useCallback((newWaypoints = []) => {
-    const cloned = newWaypoints.map((wp) => ({ lat: wp.lat, lng: wp.lng }))
+    const cloned = newWaypoints.filter(isValidWaypoint).map(cloneWaypoint)
     setWaypoints(cloned)
     setServerWaypoints(cloned)
   }, [])

@@ -10,6 +10,24 @@ const {
   syncRouteLocations,
   toAdminRoute,
 } = require("../utils/routeNetwork.js");
+const osrmService = require("./osrm.service");
+
+function normalizeWaypoint(waypoint) {
+  const lat = Number(waypoint?.lat);
+  const lng = Number(waypoint?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+function normalizeWaypoints(waypoints = []) {
+  if (!Array.isArray(waypoints)) return [];
+  return waypoints.map(normalizeWaypoint).filter(Boolean);
+}
+
+function hasManualGeometry(route) {
+  return Array.isArray(route?.geometry?.coordinates) &&
+    route.geometry.coordinates.length >= 2;
+}
 
 async function getAllRoutes(page = 1, limit = 10) {
   const pageNum = parseInt(page, 10) || 1;
@@ -76,6 +94,9 @@ async function updateRoute(id, data) {
     }
   }
 
+  const hadGeneratedPath = Array.isArray(route.path) && route.path.length > 1;
+  const touchesRouteShape = Boolean(data.stops || data.geometry);
+
   Object.assign(
     route,
     extractRouteFields({
@@ -84,11 +105,19 @@ async function updateRoute(id, data) {
     }),
   );
 
+  if (hadGeneratedPath && touchesRouteShape) {
+    route.pathStale = true;
+  }
+
   if (data.stops || data.geometry) {
     await syncRouteLocations(route, {
       ...route.toObject(),
       ...data,
     });
+    if (hadGeneratedPath && touchesRouteShape) {
+      route.pathStale = true;
+      await route.save();
+    }
   } else {
     await route.save();
   }
@@ -152,6 +181,68 @@ async function getStats() {
   return { totalRoutes, totalUsers, totalRatings, topSearched };
 }
 
+async function generateRoutePath(id, waypoints) {
+  const route = await populateRouteGraph(Route.findById(id));
+  if (!route) {
+    throw { statusCode: 404, message: "Route not found" };
+  }
+
+  const cleanWaypoints = Array.isArray(waypoints)
+    ? normalizeWaypoints(waypoints)
+    : normalizeWaypoints(route.waypoints);
+
+  if (Array.isArray(waypoints)) {
+    route.waypoints = cleanWaypoints;
+  }
+
+  let coords = osrmService.buildRoutingCoords({
+    ...route.toObject(),
+    waypoints: cleanWaypoints,
+  });
+
+  if (coords.length < 2 && cleanWaypoints.length >= 2) {
+    coords = cleanWaypoints;
+  }
+
+  if (coords.length < 2) {
+    throw {
+      statusCode: 400,
+      message: `OSRM needs at least two valid points. Received ${cleanWaypoints.length} valid waypoint(s). Save route geometry or add at least two OSRM points.`,
+    };
+  }
+
+  const shouldUseManualPath = hasManualGeometry(route) || cleanWaypoints.length >= 2;
+  const generatedPath = shouldUseManualPath
+    ? coords
+    : await osrmService.generatePath(coords);
+  route.path = generatedPath;
+  route.pathGeneratedAt = new Date();
+  route.pathStale = false;
+  await route.save();
+
+  return {
+    pointCount: generatedPath.length,
+    path: route.path,
+    pathGeneratedAt: route.pathGeneratedAt,
+    pathStale: route.pathStale,
+    waypoints: route.waypoints,
+  };
+}
+
+async function clearRoutePath(id) {
+  const route = await Route.findByIdAndUpdate(
+    id,
+    { path: [], pathGeneratedAt: null, pathStale: false, waypoints: [] },
+    { new: true },
+  );
+
+  if (!route) {
+    throw { statusCode: 404, message: "Route not found" };
+  }
+
+  return { message: "Generated path cleared" };
+}
+
 module.exports = {
   getAllRoutes,
   createRoute,
@@ -159,4 +250,6 @@ module.exports = {
   softDeleteRoute,
   restoreRoute,
   getStats,
+  generateRoutePath,
+  clearRoutePath,
 };
