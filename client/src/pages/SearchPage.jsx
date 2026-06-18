@@ -540,6 +540,7 @@ export default function SearchPage() {
                 <TravelPlanCard
                   key={result.travelPlanId}
                   travelPlan={result}
+                  originCoords={originCoords}
                   onRateClick={setRatingTravelPlan}
                   onSaveClick={handleSaveTravelPlan}
                   onUnsaveClick={handleSaveTravelPlan}
@@ -552,6 +553,7 @@ export default function SearchPage() {
                   key={result.route._id || result.route.routeId}
                   route={result.route}
                   accuracyStats={result.accuracyStats}
+                  originCoords={originCoords}
                   onRateClick={(id) => handleRateRoute(id, result.route.nameAr)}
                   onSaveClick={handleSaveRoute}
                   onUnsaveClick={handleSaveRoute}
@@ -577,6 +579,7 @@ export default function SearchPage() {
                 key={route._id || route.routeId}
                 route={route}
                 accuracyStats={accuracyStats}
+                originCoords={originCoords}
                 onRateClick={(id) => handleRateRoute(id, route.nameAr)}
                 onSaveClick={handleSaveRoute}
                 onUnsaveClick={handleSaveRoute}

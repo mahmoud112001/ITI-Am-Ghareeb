@@ -21,14 +21,30 @@ export function buildTravelSegmentMapDescriptor(travelSegment) {
   })
 }
 
-export function buildMapSearchParamsForTravelSegments(travelSegments = []) {
+function normalizeCoords(coords) {
+  const lat = Number(coords?.lat)
+  const lng = Number(coords?.lng)
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
+  if (lat === 0 && lng === 0) return null
+
+  return { lat, lng }
+}
+
+export function buildMapSearchParamsForTravelSegments(travelSegments = [], options = {}) {
   const normalizedTravelSegments = (Array.isArray(travelSegments) ? travelSegments : [])
     .map(buildTravelSegmentMapDescriptor)
     .filter(Boolean)
+  const originCoords = normalizeCoords(options.originCoords)
 
   const params = new URLSearchParams()
   if (normalizedTravelSegments.length) {
     params.set('travelSegments', JSON.stringify(normalizedTravelSegments))
+  }
+  if (originCoords) {
+    params.set('originLat', String(originCoords.lat))
+    params.set('originLng', String(originCoords.lng))
   }
 
   return params

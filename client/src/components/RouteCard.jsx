@@ -154,6 +154,7 @@ function StationsStepper({ stations, matchedSegment }) {
 export default function RouteCard({
   route,
   accuracyStats,
+  originCoords = null,
   onRateClick,
   onSaveClick,
   onUnsaveClick,
@@ -283,7 +284,7 @@ export default function RouteCard({
                     matchedSegment: route.matchedSegment || null,
                   },
                 },
-              ])
+              ], { originCoords })
 
               navigate(`/map?${params.toString()}`)
             }}

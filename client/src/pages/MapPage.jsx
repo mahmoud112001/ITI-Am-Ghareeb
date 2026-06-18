@@ -465,6 +465,24 @@ function distanceSquared(point, target) {
   return (point.coords.lat - target.coords.lat) ** 2 + (point.coords.lng - target.coords.lng) ** 2
 }
 
+function normalizeLatLng(point) {
+  const lat = Number(point?.lat)
+  const lng = Number(point?.lng)
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
+  if (lat === 0 && lng === 0) return null
+
+  return { lat, lng }
+}
+
+function parseQueryCoords(searchParams, prefix) {
+  return normalizeLatLng({
+    lat: searchParams.get(`${prefix}Lat`),
+    lng: searchParams.get(`${prefix}Lng`),
+  })
+}
+
 function findNearestGeometryIndex(geometryPoints, target) {
   if (!target?.coords || !geometryPoints.length) return -1
 
@@ -771,6 +789,7 @@ export default function MapPage() {
   const [locError, setLocError] = useState('')
   const [nearestRoute, setNearestRoute] = useState(null)
   const [tracking, setTracking] = useState(false)
+  const [approachPathCoords, setApproachPathCoords] = useState([])
 
   async function refreshNearestRoute(coordsArr) {
     try {
@@ -889,6 +908,63 @@ export default function MapPage() {
     sharedTransferSkipKeys.add(`${step.index + 1}:${stationId}`)
   })
 
+  const queryOriginCoords = parseQueryCoords(searchParams, 'origin')
+  const firstRouteState = hydratedRouteStates[0] || null
+  const approachBoardStation = firstRouteState
+    ? getStationById(firstRouteState, firstRouteState.matchedOriginId) || firstRouteState.route?.origin
+    : null
+  const approachBoardCoords = normalizeLatLng(approachBoardStation?.coords)
+
+  useEffect(() => {
+    const fallbackCoords = queryOriginCoords && approachBoardCoords
+      ? [
+          [queryOriginCoords.lat, queryOriginCoords.lng],
+          [approachBoardCoords.lat, approachBoardCoords.lng],
+        ]
+      : []
+
+    if (!queryOriginCoords || !approachBoardCoords) {
+      setApproachPathCoords([])
+      return
+    }
+
+    let cancelled = false
+    setApproachPathCoords(fallbackCoords)
+
+    api
+      .get('/api/routes/path-between', {
+        params: {
+          fromLat: queryOriginCoords.lat,
+          fromLng: queryOriginCoords.lng,
+          toLat: approachBoardCoords.lat,
+          toLng: approachBoardCoords.lng,
+        },
+      })
+      .then((response) => {
+        if (cancelled) return
+        const pathCoords = (response.data?.path || [])
+          .map((point) => normalizeLatLng(point))
+          .filter(Boolean)
+          .map((point) => [point.lat, point.lng])
+
+        setApproachPathCoords(pathCoords.length >= 2 ? pathCoords : fallbackCoords)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setApproachPathCoords(fallbackCoords)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    queryOriginCoords?.lat,
+    queryOriginCoords?.lng,
+    approachBoardCoords?.lat,
+    approachBoardCoords?.lng,
+  ])
+
   const nearestValidStations = nearestRoute ? (nearestRoute.stations || []).filter((s) => s.coords?.lat && s.coords?.lng) : []
   const nearestPathCoords = (!nearestRoute?.pathStale ? nearestRoute?.path || [] : [])
     .filter((point) => point?.lat && point?.lng)
@@ -901,6 +977,7 @@ export default function MapPage() {
     : nearestGeometryCoords
 
   const fitCoords = [
+    ...approachPathCoords,
     ...hydratedRouteStates.flatMap((routeState) => routeState.polylineCoords || []),
     ...transferSteps.flatMap((step) => step.coords || []),
   ]
@@ -1041,6 +1118,29 @@ export default function MapPage() {
           />
 
           {fitCoords.length >= 2 && <FitBounds coords={fitCoords} />}
+
+          {approachPathCoords.length >= 2 && (
+            <RoutePolyline
+              positions={approachPathCoords}
+              palette={{ casing: '#047857', main: '#6EE7B7' }}
+              weight={4}
+              opacity={0.9}
+              dashed
+            />
+          )}
+
+          {queryOriginCoords && (
+            <Marker
+              position={[queryOriginCoords.lat, queryOriginCoords.lng]}
+              icon={userLocationIcon}
+            >
+              <Popup>
+                <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl', textAlign: 'right' }}>
+                  {t.myLocationPopup}
+                </div>
+              </Popup>
+            </Marker>
+          )}
 
           {hydratedRouteStates.map((routeState) => (
             <Fragment key={`${routeState.route.routeId}-${routeState.travelSegmentIndex}`}>

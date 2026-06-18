@@ -1,4 +1,12 @@
 const routesService = require("../services/routes.service");
+const osrmService = require("../services/osrm.service");
+
+function parseCoordPair(prefix, query) {
+  const lat = Number(query[`${prefix}Lat`]);
+  const lng = Number(query[`${prefix}Lng`]);
+  const coord = { lat, lng };
+  return osrmService.isValidCoord(coord) ? coord : null;
+}
 
 /**
  * search — GET /api/routes/search?origin=...&destination=...
@@ -188,6 +196,28 @@ const getNearestRoutes = async (req, res, next) => {
   }
 };
 
+/**
+ * getPathBetweenPoints — GET /api/routes/path-between
+ * Returns an OSRM road-following line between two arbitrary coordinates.
+ */
+const getPathBetweenPoints = async (req, res, next) => {
+  try {
+    const from = parseCoordPair("from", req.query);
+    const to = parseCoordPair("to", req.query);
+
+    if (!from || !to) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid from/to coordinates" });
+    }
+
+    const path = await osrmService.generatePath([from, to]);
+    res.status(200).json({ success: true, path });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   search,
   getStations,
@@ -200,4 +230,5 @@ module.exports = {
   unsaveTravelPlan,
   clearSavedRoutes,
   getNearestRoutes,
+  getPathBetweenPoints,
 };

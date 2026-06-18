@@ -60,6 +60,9 @@ router.delete("/saved/clear", protect, routesController.clearSavedRoutes);
 // Anonymous users can use "nearby lines"; if logged in, the search is saved to history.
 router.get("/near-me", optionalProtect, routesController.getNearestRoutes);
 
+// Public — OSRM path between two arbitrary points, used for first/last-mile map legs.
+router.get("/path-between", routesController.getPathBetweenPoints);
+
 // Public — get a single route by routeId string (MUST be last GET)
 router.get("/:routeId", routesController.getRouteById);
 

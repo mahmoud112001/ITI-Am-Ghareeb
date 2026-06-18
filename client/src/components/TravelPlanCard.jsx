@@ -35,6 +35,7 @@ function getSaveButtonState({ isSaved, isPartiallySaved, isSaving, isJustSaved }
 
 export default function TravelPlanCard({
   travelPlan,
+  originCoords = null,
   onRateClick,
   onSaveClick,
   onUnsaveClick,
@@ -61,7 +62,7 @@ export default function TravelPlanCard({
     : { borderColor: '#10B981', color: '#047857', backgroundColor: 'transparent' }
 
   function openMap() {
-    const params = buildMapSearchParamsForTravelSegments(travelSegments)
+    const params = buildMapSearchParamsForTravelSegments(travelSegments, { originCoords })
     navigate(`/map?${params.toString()}`)
   }
 
