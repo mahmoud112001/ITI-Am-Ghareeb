@@ -12,11 +12,13 @@ import {
   updateRoute,
   restoreRoute,
   deleteRoute,
+  generateRoutePath,  // ← add
+  clearRoutePath,     // ← add
 } from '../services/admin.service'
 
 // ── Query keys ────────────────────────────────────────────────────────────────
 export const ADMIN_KEYS = {
-  stats:  ['admin-stats'],
+  stats: ['admin-stats'],
   routes: (page) => ['admin-routes', page],
 }
 
@@ -28,7 +30,7 @@ export const ADMIN_KEYS = {
 export function useAdminStats() {
   return useQuery({
     queryKey: ADMIN_KEYS.stats,
-    queryFn:  getAdminStats,
+    queryFn: getAdminStats,
   })
 }
 
@@ -42,8 +44,8 @@ export function useAdminStats() {
  */
 export function useAdminRoutes(page = 1) {
   return useQuery({
-    queryKey:        ADMIN_KEYS.routes(page),
-    queryFn:         () => getAdminRoutes(page),
+    queryKey: ADMIN_KEYS.routes(page),
+    queryFn: () => getAdminRoutes(page),
     placeholderData: (prev) => prev, // keeps previous page data while next page loads (replaces keepPreviousData in v5)
   })
 }
@@ -115,6 +117,26 @@ export function useDeleteRoute() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-routes'] })
       qc.invalidateQueries({ queryKey: ADMIN_KEYS.stats })
+    },
+  })
+}
+
+export function useGenerateRoutePath() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, waypoints }) => generateRoutePath(id, waypoints),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-routes'] })
+    },
+  })
+}
+
+export function useClearRoutePath() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id) => clearRoutePath(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-routes'] })
     },
   })
 }

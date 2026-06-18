@@ -137,13 +137,36 @@ const restoreRoute = async (req, res, next) => {
   }
 };
 
+const generatePath = async (req, res, next) => {
+  try {
+    const result = await adminService.generateRoutePath(
+      req.params.id,
+      req.body.waypoints,
+    );
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const clearPath = async (req, res, next) => {
+  try {
+    const result = await adminService.clearRoutePath(req.params.id);
+    res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const router = express.Router();
 
 router.use(protect, requireAdmin);
 router.get("/", listRoutes);
 router.post("/", validate(routeSchema), createRoute);
+router.post("/:id/generate-path", generatePath);
 router.put("/:id", validate(routeUpdateSchema), updateRoute);
 router.patch("/:id/restore", restoreRoute);
+router.delete("/:id/path", clearPath);
 router.delete("/:id", deleteRoute);
 
 module.exports = router;

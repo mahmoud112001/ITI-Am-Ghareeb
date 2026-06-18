@@ -490,9 +490,16 @@ function buildRouteMapState(route, matchedOriginId, matchedDestinationId) {
   const lastValidStationId = validStations[validStations.length - 1]?._id
     ? String(validStations[validStations.length - 1]._id)
     : null
-  const polylineCoords = geometryPoints
+  const routePathCoords = (route?.path || [])
+    .filter((point) => point?.lat && point?.lng)
+    .map((point) => [point.lat, point.lng])
+  const geometryPolylineCoords = geometryPoints
     .filter((s) => s.coords?.lat !== 0 && s.coords?.lng !== 0)
     .map((s) => [s.coords.lat, s.coords.lng])
+  const polylineCoords = routePathCoords.length >= 2
+    ? routePathCoords
+    : geometryPolylineCoords
+  const hasGeneratedPath = routePathCoords.length >= 2
   const mapGeometrySlice = (start, end) =>
     geometryPoints
       .slice(start, end)
@@ -515,15 +522,17 @@ function buildRouteMapState(route, matchedOriginId, matchedDestinationId) {
     matchedDestinationGeometryIndex >= 0 &&
     matchedOriginGeometryIndex !== matchedDestinationGeometryIndex
 
-  const highlightGeometryCoords = hasMatchedSegment
+  const highlightGeometryCoords = hasGeneratedPath
+    ? []
+    : hasMatchedSegment
     ? mapGeometrySlice(highlightedStartIndex, highlightedEndIndex + 1)
     : polylineCoords
 
-  const mutedLeadingCoords = hasMatchedSegment
+  const mutedLeadingCoords = !hasGeneratedPath && hasMatchedSegment
     ? mapGeometrySlice(0, highlightedStartIndex + 1)
     : []
 
-  const mutedTrailingCoords = hasMatchedSegment
+  const mutedTrailingCoords = !hasGeneratedPath && hasMatchedSegment
     ? mapGeometrySlice(highlightedEndIndex, geometryPoints.length)
     : []
 
@@ -880,9 +889,15 @@ export default function MapPage() {
   })
 
   const nearestValidStations = nearestRoute ? (nearestRoute.stations || []).filter((s) => s.coords?.lat && s.coords?.lng) : []
-  const nearestPolylineCoords = (nearestRoute?.geometryPoints || [])
+  const nearestPathCoords = (nearestRoute?.path || [])
+    .filter((point) => point?.lat && point?.lng)
+    .map((point) => [point.lat, point.lng])
+  const nearestGeometryCoords = (nearestRoute?.geometryPoints || [])
     .filter((s) => s.coords?.lat && s.coords?.lng)
     .map((s) => [s.coords.lat, s.coords.lng])
+  const nearestPolylineCoords = nearestPathCoords.length >= 2
+    ? nearestPathCoords
+    : nearestGeometryCoords
 
   const fitCoords = [
     ...hydratedRouteStates.flatMap((routeState) => routeState.polylineCoords || []),
