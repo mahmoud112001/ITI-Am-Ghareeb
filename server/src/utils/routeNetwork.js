@@ -346,6 +346,29 @@ function getOrderedRouteGeometry(routeDoc, selectedDirection = "forward") {
     : normalizeRouteGeometry(route.geometry);
 }
 
+function normalizeRoutePath(path = []) {
+  return Array.isArray(path)
+    ? path
+        .map((point, index) => {
+          const lat = Number(point?.lat);
+          const lng = Number(point?.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          return {
+            lat,
+            lng,
+            order: Number.isFinite(Number(point?.order)) ? Number(point.order) : index + 1,
+          };
+        })
+        .filter(Boolean)
+    : [];
+}
+
+function getOrderedRoutePath(routeDoc, selectedDirection = "forward") {
+  const route = toPlainObject(routeDoc);
+  const path = normalizeRoutePath(route?.path);
+  return selectedDirection === "reverse" ? [...path].reverse() : path;
+}
+
 function buildRouteEndpoints(stops = []) {
   const first = stops[0];
   const last = stops[stops.length - 1];
@@ -364,6 +387,7 @@ function toPublicRoute(routeDoc, options = {}) {
   const routeNames = buildRouteNames(endpoints.origin, endpoints.destination);
   const geometry = getOrderedRouteGeometry(route, selectedDirection);
   const geometryPoints = geometryToPointSummaries(geometry);
+  const path = getOrderedRoutePath(route, selectedDirection);
 
   return {
     ...route,
@@ -376,6 +400,7 @@ function toPublicRoute(routeDoc, options = {}) {
     geometry,
     geometryPoints,
     mapPoints: geometryPoints,
+    path,
     fare: route.fare || null,
     operatingHours: route.operatingHours || null,
     peakHours: route.peakHours || [],

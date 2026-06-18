@@ -490,7 +490,7 @@ function buildRouteMapState(route, matchedOriginId, matchedDestinationId) {
   const lastValidStationId = validStations[validStations.length - 1]?._id
     ? String(validStations[validStations.length - 1]._id)
     : null
-  const routePathCoords = (route?.path || [])
+  const routePathCoords = (!route?.pathStale ? route?.path || [] : [])
     .filter((point) => point?.lat && point?.lng)
     .map((point) => [point.lat, point.lng])
   const geometryPolylineCoords = geometryPoints
@@ -544,6 +544,7 @@ function buildRouteMapState(route, matchedOriginId, matchedDestinationId) {
     firstValidStationId,
     lastValidStationId,
     polylineCoords,
+    hasGeneratedPath,
     highlightGeometryCoords,
     mutedLeadingCoords,
     mutedTrailingCoords,
@@ -889,7 +890,7 @@ export default function MapPage() {
   })
 
   const nearestValidStations = nearestRoute ? (nearestRoute.stations || []).filter((s) => s.coords?.lat && s.coords?.lng) : []
-  const nearestPathCoords = (nearestRoute?.path || [])
+  const nearestPathCoords = (!nearestRoute?.pathStale ? nearestRoute?.path || [] : [])
     .filter((point) => point?.lat && point?.lng)
     .map((point) => [point.lat, point.lng])
   const nearestGeometryCoords = (nearestRoute?.geometryPoints || [])
@@ -1064,10 +1065,12 @@ export default function MapPage() {
               {routeState.highlightGeometryCoords.length === 0 && routeState.polylineCoords.length >= 2 && (
                 <RoutePolyline
                   positions={routeState.polylineCoords}
-                  palette={{ casing: '#94A3B8', main: '#D1D5DB' }}
-                  weight={5}
-                  opacity={0.7}
-                  muted
+                  palette={routeState.hasGeneratedPath
+                    ? { casing: routeState.palette.casing, main: routeState.palette.main }
+                    : { casing: '#94A3B8', main: '#D1D5DB' }}
+                  weight={routeState.hasGeneratedPath ? 6 : 5}
+                  opacity={routeState.hasGeneratedPath ? 0.94 : 0.7}
+                  muted={!routeState.hasGeneratedPath}
                 />
               )}
               {routeState.highlightGeometryCoords.length >= 2 && (
