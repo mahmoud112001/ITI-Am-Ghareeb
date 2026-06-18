@@ -830,6 +830,7 @@ function GeometryEditorModal({
 
 // ── Route form modal (add & edit) ─────────────────────────────────────────────
 function RouteFormModal({ initial, routeDoc, onRouteDocChange, onClose, onSave, title, isPending }) {
+  const f = t.form
   const [form, setForm]           = useState(initial || EMPTY_FORM)
   const [err,  setErr]            = useState('')
   const [mapPicker, setMapPicker] = useState(null) // { stationIndex, label }
