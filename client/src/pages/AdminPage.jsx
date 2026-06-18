@@ -12,6 +12,9 @@ import {
   useDeleteRoute,
 } from '../hooks/useAdminRoutes'
 import RoutePathEditor from '../components/RoutePathEditor'
+import ar from '../i18n/ar'
+
+const { admin: t } = ar
 
 // ── Fix Leaflet default marker icon (Vite asset pipeline breaks it) ───────────
 delete L.Icon.Default.prototype._getIconUrl
