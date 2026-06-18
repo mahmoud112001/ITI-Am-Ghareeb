@@ -1360,7 +1360,7 @@ export default function MapPage() {
         {!hasTravelSegmentSelection && (
           <div
             className="absolute inset-0 flex items-center justify-center pointer-events-none"
-            style={{ zIndex: 400 }}
+            style={{ zIndex: 1000 }}
           >
             <div
               className="rounded-2xl p-6 text-center shadow-xl pointer-events-auto"
@@ -1386,7 +1386,7 @@ export default function MapPage() {
         {isLoading && (
           <div
             className="absolute inset-0 flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 500 }}
+            style={{ backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 1100 }}
           >
             <div
               className="w-10 h-10 rounded-full border-4 animate-spin"
@@ -1395,7 +1395,10 @@ export default function MapPage() {
           </div>
         )}
 
-        <div className="absolute top-4 left-4 z-40 flex max-w-[300px] flex-col gap-3">
+        <div
+          className="absolute top-4 left-4 flex max-w-[300px] flex-col gap-3"
+          style={{ zIndex: 1000 }}
+        >
           <div
             className="rounded-2xl border p-4 shadow-lg"
             style={{ backgroundColor: 'rgba(255,255,255,0.96)', borderColor: '#E5E7EB', fontFamily: 'Cairo, sans-serif' }}
@@ -1446,7 +1449,10 @@ export default function MapPage() {
           </div>
         </div>
 
-        <div className="absolute bottom-6 left-4 z-40 flex flex-col gap-3">
+        <div
+          className="absolute bottom-6 left-4 flex flex-col gap-3"
+          style={{ zIndex: 1000 }}
+        >
           <button
             onClick={handleLocate}
             disabled={locating}
@@ -1486,8 +1492,8 @@ export default function MapPage() {
 
         {locError && (
           <div
-            className="absolute bottom-20 left-4 z-40 rounded-xl px-4 py-2 text-sm shadow"
-            style={{ backgroundColor: '#FEE2E2', color: '#991B1B', fontFamily: 'Cairo, sans-serif' }}
+            className="absolute bottom-20 left-4 rounded-xl px-4 py-2 text-sm shadow"
+            style={{ backgroundColor: '#FEE2E2', color: '#991B1B', fontFamily: 'Cairo, sans-serif', zIndex: 1000 }}
           >
             {locError}
           </div>
