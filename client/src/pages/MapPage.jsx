@@ -1347,7 +1347,7 @@ export default function MapPage() {
                     <strong style={{ color: '#1B2A4A', display: 'block' }}>{t.myLocationPopup}</strong>
                     {accuracy ? (
                       <span style={{ color: '#6B7280', fontSize: 12 }}>
-                        {t.accuracyLabel}: {Math.round(accuracy)} {t.meters}
+                        {t.accuracyLabel(Math.round(accuracy))}
                       </span>
                     ) : null}
                   </div>
@@ -1427,6 +1427,16 @@ export default function MapPage() {
                 <span
                   className="h-1.5 w-8 rounded-full"
                   style={{
+                    backgroundImage: 'repeating-linear-gradient(to right, #6EE7B7 0 8px, transparent 8px 12px)',
+                    backgroundColor: '#047857',
+                  }}
+                />
+                <span>{t.legendApproachRoute}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-1.5 w-8 rounded-full"
+                  style={{
                     backgroundImage: 'repeating-linear-gradient(to right, #FCA5A5 0 8px, transparent 8px 12px)',
                     backgroundColor: '#B91C1C',
                   }}
@@ -1485,7 +1495,7 @@ export default function MapPage() {
               className="rounded-xl px-4 py-2 text-sm shadow"
               style={{ backgroundColor: '#FFFFFF', color: '#1B2A4A', fontFamily: 'Cairo, sans-serif' }}
             >
-              {t.accuracyLabel}: {Math.round(accuracy)} {t.meters}
+              {t.accuracyLabel(Math.round(accuracy))}
             </div>
           ) : null}
         </div>
