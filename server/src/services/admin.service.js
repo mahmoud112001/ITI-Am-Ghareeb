@@ -24,9 +24,14 @@ function normalizeWaypoints(waypoints = []) {
   return waypoints.map(normalizeWaypoint).filter(Boolean);
 }
 
-function hasManualGeometry(route) {
-  return Array.isArray(route?.geometry?.coordinates) &&
-    route.geometry.coordinates.length >= 2;
+function geometrySignature(geometry) {
+  return (geometry?.coordinates || [])
+    .map((point) => {
+      if (!Array.isArray(point) || point.length !== 2) return null;
+      return point.map((value) => Number(value).toFixed(6)).join(",");
+    })
+    .filter(Boolean)
+    .join("|");
 }
 
 async function getAllRoutes(page = 1, limit = 10) {
@@ -95,7 +100,7 @@ async function updateRoute(id, data) {
   }
 
   const hadGeneratedPath = Array.isArray(route.path) && route.path.length > 1;
-  const touchesRouteShape = Boolean(data.stops || data.geometry);
+  const existingGeometrySignature = geometrySignature(route.geometry);
 
   Object.assign(
     route,
@@ -105,7 +110,10 @@ async function updateRoute(id, data) {
     }),
   );
 
-  if (hadGeneratedPath && touchesRouteShape) {
+  const nextGeometrySignature = geometrySignature(route.geometry);
+  const routeShapeChanged = existingGeometrySignature !== nextGeometrySignature;
+
+  if (hadGeneratedPath && routeShapeChanged) {
     route.pathStale = true;
   }
 
@@ -114,7 +122,7 @@ async function updateRoute(id, data) {
       ...route.toObject(),
       ...data,
     });
-    if (hadGeneratedPath && touchesRouteShape) {
+    if (hadGeneratedPath && routeShapeChanged) {
       route.pathStale = true;
       await route.save();
     }
@@ -211,10 +219,7 @@ async function generateRoutePath(id, waypoints) {
     };
   }
 
-  const shouldUseManualPath = hasManualGeometry(route) || cleanWaypoints.length >= 2;
-  const generatedPath = shouldUseManualPath
-    ? coords
-    : await osrmService.generatePath(coords);
+  const generatedPath = await osrmService.generatePath(coords);
   route.path = generatedPath;
   route.pathGeneratedAt = new Date();
   route.pathStale = false;

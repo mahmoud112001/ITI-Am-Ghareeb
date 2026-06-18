@@ -855,7 +855,7 @@ function GeometryEditorModal({
 }
 
 // ── Route form modal (add & edit) ─────────────────────────────────────────────
-function RouteFormModal({ initial, routeDoc, onClose, onSave, title, isPending }) {
+function RouteFormModal({ initial, routeDoc, onRouteDocChange, onClose, onSave, title, isPending }) {
   const [form, setForm]           = useState(initial || EMPTY_FORM)
   const [err,  setErr]            = useState('')
   const [mapPicker, setMapPicker] = useState(null) // { stationIndex, label }
@@ -1114,7 +1114,11 @@ function RouteFormModal({ initial, routeDoc, onClose, onSave, title, isPending }
                   <RoutePathEditor
                     route={liveRouteDoc}
                     onPathChange={(updates) => {
-                      setLiveRouteDoc((current) => ({ ...current, ...updates }))
+                      setLiveRouteDoc((current) => {
+                        const next = { ...current, ...updates }
+                        onRouteDocChange?.(next)
+                        return next
+                      })
                     }}
                   />
                 </>
@@ -1381,6 +1385,7 @@ export default function AdminPage() {
           title="تعديل الخط"
           initial={editRoute.form}
           routeDoc={editRoute.doc}
+          onRouteDocChange={(doc) => setEditRoute((current) => ({ ...current, doc }))}
           onClose={() => setEditRoute(null)}
           onSave={handleUpdate}
           isPending={updateMutation.isPending}
