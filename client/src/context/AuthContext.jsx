@@ -41,7 +41,10 @@ export function AuthProvider({ children }) {
           } catch {
             // Token expired or invalid — clear storage and stay logged out
             setTokens(null, null)
+          } finally {
+            setIsLoading(false)
           }
+          return
         }
 
         setIsLoading(false)
