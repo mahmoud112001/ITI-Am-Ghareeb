@@ -47,13 +47,18 @@ const EMPTY_STATION = () => ({
   allowDropoff: true,
 })
 
-// ── Empty form ────────────────────────────────────────────────────────────────
+// ── Empty form (all schema fields included) ───────────────────────────────────
 const EMPTY_FORM = {
   routeId: '',
   type: 'microbus',
   isBidirectional: false,
   fareMin: '', fareMax: '',
   hoursStart: '', hoursEnd: '',
+  is24Hours: false,
+  verified: false,
+  frequency: '',
+  peakHours: '',
+  tips: '',
   stations: [EMPTY_STATION(), EMPTY_STATION()],
   geometry: [],
 }
@@ -119,8 +124,8 @@ function StatCard({ icon, value, label }) {
   )
 }
 
-// ── Reusable text input ───────────────────────────────────────────────────────
-function Field({ label, value, onChange, type = 'text', placeholder = '', readOnly = false }) {
+// ── Reusable text input — supports error (red border + message) and disabled ──
+function Field({ label, value, onChange, type = 'text', placeholder = '', readOnly = false, disabled = false, error }) {
   return (
     <div>
       <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>{label}</label>
@@ -130,15 +135,21 @@ function Field({ label, value, onChange, type = 'text', placeholder = '', readOn
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         readOnly={readOnly}
+        disabled={disabled}
         className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
         style={{
-          borderColor: '#D1D5DB',
+          borderColor: error ? '#DC2626' : '#D1D5DB',
           fontFamily: 'Cairo, sans-serif',
-          backgroundColor: readOnly ? '#F9FAFB' : 'white',
+          backgroundColor: (readOnly || disabled) ? '#F9FAFB' : 'white',
+          opacity: disabled ? 0.5 : 1,
+          cursor: disabled ? 'not-allowed' : 'auto',
         }}
-        onFocus={(e) => !readOnly && (e.target.style.borderColor = '#F4A833')}
-        onBlur={(e)  => (e.target.style.borderColor = '#D1D5DB')}
+        onFocus={(e) => !readOnly && !disabled && (e.target.style.borderColor = error ? '#DC2626' : '#F4A833')}
+        onBlur={(e)  => (e.target.style.borderColor = error ? '#DC2626' : '#D1D5DB')}
       />
+      {error && (
+        <p className="text-xs mt-0.5" style={{ color: '#DC2626' }}>{error}</p>
+      )}
     </div>
   )
 }
@@ -149,6 +160,44 @@ function SectionLabel({ children }) {
     <p className="text-xs font-black uppercase tracking-widest pt-2 pb-1" style={{ color: '#9CA3AF' }}>
       {children}
     </p>
+  )
+}
+
+// ── Rating breakdown badge ────────────────────────────────────────────────────
+function RatingBreakdown({ ratingBreakdown }) {
+  if (!ratingBreakdown) return null
+  const { accurate = 0, inaccurate = 0, total = 0 } = ratingBreakdown
+  const showWarning = total >= 3 && inaccurate >= 2 * accurate
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap mt-1">
+      <span
+        className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+        style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}
+      >
+        ✓ {accurate}
+      </span>
+      <span
+        className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+        style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
+      >
+        ✗ {inaccurate}
+      </span>
+      <span
+        className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+        style={{ backgroundColor: '#F3F4F6', color: '#6B7280' }}
+      >
+        {total} تقييم
+      </span>
+      {showWarning && (
+        <span
+          className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+          style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+          title="تحذير: نسبة عالية من التقييمات السلبية"
+        >
+          ⚠️ مراجعة
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -181,7 +230,6 @@ function FitMapToPoints({ points }) {
       map.fitBounds(points, { padding: [30, 30] })
       return
     }
-
     if (points.length === 1) {
       map.flyTo(points[0], Math.max(map.getZoom(), 15), { duration: 0.6 })
     }
@@ -216,7 +264,6 @@ function clonePoints(points = []) {
 
 function arePointListsEqual(left = [], right = []) {
   if (left.length !== right.length) return false
-
   return left.every((point, index) => (
     point.lat === right[index]?.lat && point.lng === right[index]?.lng
   ))
@@ -242,7 +289,7 @@ function MapPickerModal({
   initialLat,
   initialLng,
   stationLabel,
-  onConfirm,   // (lat, lng, nameAr) => void
+  onConfirm,
   onClose,
 }) {
   const mp = t.mapPicker
@@ -323,7 +370,6 @@ function MapPickerModal({
         style={{ backgroundColor: '#FFFFFF', fontFamily: 'Cairo, sans-serif' }}
         dir="rtl"
       >
-        {/* Header */}
         <div className="flex justify-between items-center px-5 py-4" style={{ borderBottom: '1px solid #E5E7EB' }}>
           <div>
             <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>{mp.title}</h3>
@@ -336,7 +382,6 @@ function MapPickerModal({
           </button>
         </div>
 
-        {/* Search box */}
         <div
           className="px-5 py-3"
           style={{ borderBottom: '1px solid #E5E7EB', backgroundColor: '#F9FAFB', position: 'relative' }}
@@ -394,7 +439,6 @@ function MapPickerModal({
           )}
         </div>
 
-        {/* GPS button */}
         <div className="px-5 py-2 flex justify-center" style={{ backgroundColor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
           <button
             onClick={getCurrentLocation}
@@ -405,7 +449,6 @@ function MapPickerModal({
           </button>
         </div>
 
-        {/* Map */}
         <div style={{ height: 300 }}>
           <MapContainer center={[picked.lat, picked.lng]} zoom={13} style={{ height: '100%', width: '100%' }}>
             <TileLayer
@@ -427,7 +470,6 @@ function MapPickerModal({
           </MapContainer>
         </div>
 
-        {/* Coordinates + resolved name */}
         <div
           className="px-5 py-3 flex flex-col gap-1"
           style={{ backgroundColor: '#F9FAFB', borderTop: '1px solid #E5E7EB' }}
@@ -447,7 +489,6 @@ function MapPickerModal({
           </span>
         </div>
 
-        {/* Actions */}
         <div className="flex gap-3 px-5 py-4">
           <button
             onClick={onClose}
@@ -490,11 +531,7 @@ function GeometryEditorModal({
     setPoints((current) => {
       const next = typeof updater === 'function' ? updater(current) : updater
       const nextSnapshot = clonePoints(next)
-
-      if (arePointListsEqual(current, nextSnapshot)) {
-        return current
-      }
-
+      if (arePointListsEqual(current, nextSnapshot)) return current
       setHistory((entries) => [...entries, clonePoints(current)])
       return nextSnapshot
     })
@@ -503,7 +540,6 @@ function GeometryEditorModal({
   function undoLastAction() {
     setHistory((entries) => {
       if (entries.length === 0) return entries
-
       const previous = entries[entries.length - 1]
       setPoints(clonePoints(previous))
       return entries.slice(0, -1)
@@ -517,39 +553,19 @@ function GeometryEditorModal({
   useEffect(() => {
     function handleShortcut(event) {
       if (isTypingTarget(event.target)) return
-
-      const isUndoShortcut = (event.ctrlKey || event.metaKey) && event.code === 'KeyZ'
+      const isUndoShortcut       = (event.ctrlKey || event.metaKey) && event.code === 'KeyZ'
       const isRemoveLastShortcut = event.code === 'Backspace' || event.code === 'Delete'
-      const isResetShortcut = event.altKey && event.code === 'KeyR'
-      const isClearShortcut = event.altKey && event.code === 'KeyX'
+      const isResetShortcut      = event.altKey && event.code === 'KeyR'
+      const isClearShortcut      = event.altKey && event.code === 'KeyX'
 
-      if (isUndoShortcut) {
-        event.preventDefault()
-        undoLastAction()
-        return
-      }
-
-      if (isRemoveLastShortcut) {
-        event.preventDefault()
-        removeLastPoint()
-        return
-      }
-
-      if (isResetShortcut) {
-        event.preventDefault()
-        resetFromStops()
-        return
-      }
-
-      if (isClearShortcut) {
-        event.preventDefault()
-        applyPointsChange([])
-      }
+      if (isUndoShortcut)       { event.preventDefault(); undoLastAction(); return }
+      if (isRemoveLastShortcut) { event.preventDefault(); removeLastPoint(); return }
+      if (isResetShortcut)      { event.preventDefault(); resetFromStops(); return }
+      if (isClearShortcut)      { event.preventDefault(); applyPointsChange([]) }
     }
-
     document.addEventListener('keydown', handleShortcut, true)
     return () => document.removeEventListener('keydown', handleShortcut, true)
-  }, [history])
+  }, [history]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function addPoint(lat, lng) {
     applyPointsChange((current) => [
@@ -569,10 +585,7 @@ function GeometryEditorModal({
   function movePoint(index, direction) {
     applyPointsChange((current) => {
       const targetIndex = index + direction
-      if (targetIndex < 0 || targetIndex >= current.length) {
-        return current
-      }
-
+      if (targetIndex < 0 || targetIndex >= current.length) return current
       const nextPoints = [...current]
       const [point] = nextPoints.splice(index, 1)
       nextPoints.splice(targetIndex, 0, point)
@@ -602,9 +615,7 @@ function GeometryEditorModal({
         <div className="flex justify-between items-center px-5 py-4" style={{ borderBottom: '1px solid #E5E7EB' }}>
           <div>
             <h3 className="text-base font-bold" style={{ color: '#1B2A4A' }}>{g.title}</h3>
-            <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
-              {g.subtitle}
-            </p>
+            <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{g.subtitle}</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -621,10 +632,7 @@ function GeometryEditorModal({
                 attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               />
               {fitPoints.length > 0 && <FitMapToPoints points={fitPoints} />}
-              <MapClickHandler
-                onPick={addPoint}
-                onUndo={removeLastPoint}
-              />
+              <MapClickHandler onPick={addPoint} onUndo={removeLastPoint} />
 
               {stopPositions.length >= 2 && (
                 <Polyline
@@ -638,7 +646,6 @@ function GeometryEditorModal({
                 if (!point) return null
                 const isFirst = index === 0
                 const isLast = index === stations.length - 1
-
                 return (
                   <CircleMarker
                     key={`stop-${index}`}
@@ -664,7 +671,6 @@ function GeometryEditorModal({
               {points.map((point, index) => {
                 const latLng = toLatLngPoint(point)
                 if (!latLng) return null
-
                 return (
                   <Marker
                     key={`geometry-${index}`}
@@ -687,119 +693,45 @@ function GeometryEditorModal({
 
           <div className="border-r p-4 flex flex-col gap-3 overflow-y-auto min-h-0" style={{ borderColor: '#E5E7EB' }}>
             <div className="flex flex-wrap gap-2">
-              <button
-                onClick={resetFromStops}
-                className="rounded-lg px-3 py-2 text-xs font-semibold"
-                style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }}
-                title="Alt+R"
-              >
-                {g.resetFromStops}
-                <span className="mr-2 text-[11px] opacity-70">Alt+R</span>
+              <button onClick={resetFromStops} className="rounded-lg px-3 py-2 text-xs font-semibold" style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }} title="Alt+R">
+                {g.resetFromStops}<span className="mr-2 text-[11px] opacity-70">Alt+R</span>
               </button>
-              <button
-                onClick={() => applyPointsChange([])}
-                className="rounded-lg px-3 py-2 text-xs font-semibold"
-                style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
-                title="Alt+X"
-              >
-                {g.clearAll}
-                <span className="mr-2 text-[11px] opacity-70">Alt+X</span>
+              <button onClick={() => applyPointsChange([])} className="rounded-lg px-3 py-2 text-xs font-semibold" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }} title="Alt+X">
+                {g.clearAll}<span className="mr-2 text-[11px] opacity-70">Alt+X</span>
               </button>
-              <button
-                onClick={undoLastAction}
-                disabled={history.length === 0}
-                className="rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40"
-                style={{ backgroundColor: '#F3F4F6', color: '#4B5563' }}
-                title="Ctrl+Z / Cmd+Z"
-              >
-                {g.undo}
-                <span className="mr-2 text-[11px] opacity-70">Ctrl+Z</span>
+              <button onClick={undoLastAction} disabled={history.length === 0} className="rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ backgroundColor: '#F3F4F6', color: '#4B5563' }} title="Ctrl+Z / Cmd+Z">
+                {g.undo}<span className="mr-2 text-[11px] opacity-70">Ctrl+Z</span>
               </button>
-              <button
-                onClick={removeLastPoint}
-                disabled={points.length === 0}
-                className="rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40"
-                style={{ backgroundColor: '#F3F4F6', color: '#4B5563' }}
-                title="Backspace / Delete / Right Click"
-              >
-                {g.removeLastPoint}
-                <span className="mr-2 text-[11px] opacity-70">⌫ / Right Click</span>
+              <button onClick={removeLastPoint} disabled={points.length === 0} className="rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ backgroundColor: '#F3F4F6', color: '#4B5563' }} title="Backspace / Delete / Right Click">
+                {g.removeLastPoint}<span className="mr-2 text-[11px] opacity-70">⌫ / Right Click</span>
               </button>
             </div>
 
-            <div
-              className="rounded-xl p-3"
-              style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}
-            >
-              <p className="text-xs font-bold mb-1" style={{ color: '#6B7280' }}>
-                {g.pointsCount(points.length)}
-              </p>
+            <div className="rounded-xl p-3" style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}>
+              <p className="text-xs font-bold mb-1" style={{ color: '#6B7280' }}>{g.pointsCount(points.length)}</p>
               <p className="text-xs leading-6" style={{ color: '#6B7280' }}>
-                {g.legendStops}
-                <br />
-                {g.legendRoute}
+                {g.legendStops}<br />{g.legendRoute}
               </p>
             </div>
 
             {points.length === 0 ? (
-              <div
-                className="rounded-xl p-4 text-sm"
-                style={{ backgroundColor: '#FFFBEB', border: '1px solid #FCD34D', color: '#92400E' }}
-              >
+              <div className="rounded-xl p-4 text-sm" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FCD34D', color: '#92400E' }}>
                 {g.emptyState}
               </div>
             ) : (
               points.map((point, index) => (
-                <div
-                  key={`point-row-${index}`}
-                  className="rounded-xl p-3 flex flex-col gap-2"
-                  style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}
-                >
+                <div key={`point-row-${index}`} className="rounded-xl p-3 flex flex-col gap-2" style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold" style={{ color: '#1B2A4A' }}>
-                      {g.pointLabel(index + 1)}
-                    </span>
-                    <button
-                      onClick={() => removePoint(index)}
-                      className="text-xs font-semibold"
-                      style={{ color: '#DC2626' }}
-                    >
-                      {ar.common.delete}
-                    </button>
+                    <span className="text-xs font-bold" style={{ color: '#1B2A4A' }}>{g.pointLabel(index + 1)}</span>
+                    <button onClick={() => removePoint(index)} className="text-xs font-semibold" style={{ color: '#DC2626' }}>{ar.common.delete}</button>
                   </div>
-
                   <div className="grid grid-cols-2 gap-2">
-                    <Field
-                      label={t.form.latLabel}
-                      value={point.lat}
-                      onChange={(value) => updatePoint(index, { lat: value })}
-                      type="number"
-                    />
-                    <Field
-                      label={t.form.lngLabel}
-                      value={point.lng}
-                      onChange={(value) => updatePoint(index, { lng: value })}
-                      type="number"
-                    />
+                    <Field label={t.form.latLabel} value={point.lat} onChange={(value) => updatePoint(index, { lat: value })} type="number" />
+                    <Field label={t.form.lngLabel} value={point.lng} onChange={(value) => updatePoint(index, { lng: value })} type="number" />
                   </div>
-
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => movePoint(index, -1)}
-                      disabled={index === 0}
-                      className="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold disabled:opacity-40"
-                      style={{ backgroundColor: '#E5E7EB', color: '#374151' }}
-                    >
-                      {g.moveUp}
-                    </button>
-                    <button
-                      onClick={() => movePoint(index, 1)}
-                      disabled={index === points.length - 1}
-                      className="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold disabled:opacity-40"
-                      style={{ backgroundColor: '#E5E7EB', color: '#374151' }}
-                    >
-                      {g.moveDown}
-                    </button>
+                    <button onClick={() => movePoint(index, -1)} disabled={index === 0} className="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold disabled:opacity-40" style={{ backgroundColor: '#E5E7EB', color: '#374151' }}>{g.moveUp}</button>
+                    <button onClick={() => movePoint(index, 1)} disabled={index === points.length - 1} className="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold disabled:opacity-40" style={{ backgroundColor: '#E5E7EB', color: '#374151' }}>{g.moveDown}</button>
                   </div>
                 </div>
               ))
@@ -808,20 +740,8 @@ function GeometryEditorModal({
         </div>
 
         <div className="flex gap-3 px-5 py-4" style={{ borderTop: '1px solid #E5E7EB' }}>
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2"
-            style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
-          >
-            {ar.common.cancel}
-          </button>
-          <button
-            onClick={() => onConfirm(points)}
-            className="flex-1 rounded-xl py-2.5 text-sm font-bold hover:opacity-80"
-            style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
-          >
-            {g.confirmBtn}
-          </button>
+          <button onClick={onClose} className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>{ar.common.cancel}</button>
+          <button onClick={() => onConfirm(points)} className="flex-1 rounded-xl py-2.5 text-sm font-bold hover:opacity-80" style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}>{g.confirmBtn}</button>
         </div>
       </div>
     </div>
@@ -832,14 +752,12 @@ function GeometryEditorModal({
 function RouteFormModal({ initial, routeDoc, onRouteDocChange, onClose, onSave, title, isPending }) {
   const f = t.form
   const [form, setForm]           = useState(initial || EMPTY_FORM)
-  const [err,  setErr]            = useState('')
-  const [mapPicker, setMapPicker] = useState(null) // { stationIndex, label }
+  const [errors, setErrors]       = useState({})
+  const [mapPicker, setMapPicker] = useState(null)
   const [geometryEditorOpen, setGeometryEditorOpen] = useState(false)
   const [liveRouteDoc, setLiveRouteDoc] = useState(routeDoc)
 
-  useEffect(() => {
-    setLiveRouteDoc(routeDoc)
-  }, [routeDoc])
+  useEffect(() => { setLiveRouteDoc(routeDoc) }, [routeDoc])
 
   function set(key, val) { setForm((prev) => ({ ...prev, [key]: val })) }
 
@@ -861,6 +779,38 @@ function RouteFormModal({ initial, routeDoc, onRouteDocChange, onClose, onSave, 
     })
   }
 
+  // ── Station reorder ───────────────────────────────────────────────────────
+  function moveStationUp(index) {
+    if (index === 0) return
+    setForm((prev) => {
+      const stations = [...prev.stations]
+      const temp = stations[index - 1]
+      stations[index - 1] = stations[index]
+      stations[index] = temp
+      return { ...prev, stations }
+    })
+  }
+
+  function moveStationDown(index) {
+    setForm((prev) => {
+      if (index === prev.stations.length - 1) return prev
+      const stations = [...prev.stations]
+      const temp = stations[index + 1]
+      stations[index + 1] = stations[index]
+      stations[index] = temp
+      return { ...prev, stations }
+    })
+  }
+
+  // ── Insert station between two stations ───────────────────────────────────
+  function insertStationAfter(index) {
+    setForm((prev) => {
+      const stations = [...prev.stations]
+      stations.splice(index + 1, 0, EMPTY_STATION())
+      return { ...prev, stations }
+    })
+  }
+
   function openMapPicker(index, label) { setMapPicker({ index, label }) }
 
   function handleMapConfirm(lat, lng, resolvedNameAr) {
@@ -872,26 +822,82 @@ function RouteFormModal({ initial, routeDoc, onRouteDocChange, onClose, onSave, 
     setMapPicker(null)
   }
 
-  function handleSave() {
-    if (!form.routeId) { setErr(f.errFillRouteId); return }
-    if (!form.fareMin || !form.fareMax) { setErr(f.errFillFare); return }
-    if (form.stations.some((s) => !s.nameAr || !s.nameEn)) { setErr(f.errFillStations); return }
-    if (form.stations.some((s) => s.allowPickup === false && s.allowDropoff === false)) {
-      setErr(f.errPickupOrDropoff)
-      return
+  // ── Validation — per-field errors object ──────────────────────────────────
+  const TIME_REGEX = /^\d{1,2}:\d{2}$/
+
+  function validate() {
+    const result = {
+      routeId:  '',
+      fareMin:  '',
+      fareMax:  '',
+      hoursStart: '',
+      hoursEnd:   '',
+      geometry: '',
+      stations: form.stations.map(() => ({ nameAr: '', nameEn: '' })),
     }
+
+    if (!form.routeId) result.routeId = f.errFillRouteId
+
+    if (!form.fareMin) {
+      result.fareMin = f.errFillFare
+    } else if (Number(form.fareMin) < 0) {
+      result.fareMin = f.errNegativeFare
+    }
+
+    if (!form.fareMax) {
+      result.fareMax = f.errFillFare
+    } else if (Number(form.fareMax) < 0) {
+      result.fareMax = f.errNegativeFare
+    }
+
+    if (form.fareMin && form.fareMax && Number(form.fareMin) > Number(form.fareMax)) {
+      result.fareMin = f.errFareMinGtMax
+    }
+
+    if (!form.is24Hours) {
+      if (form.hoursStart && !TIME_REGEX.test(form.hoursStart)) {
+        result.hoursStart = f.errInvalidTimeFormat
+      }
+      if (form.hoursEnd && !TIME_REGEX.test(form.hoursEnd)) {
+        result.hoursEnd = f.errInvalidTimeFormat
+      }
+    }
+
+    form.stations.forEach((s, i) => {
+      if (!s.nameAr) result.stations[i].nameAr = f.errFillStations
+      if (!s.nameEn) result.stations[i].nameEn = f.errFillStations
+    })
+
     if ((form.geometry || []).filter((point) => toLatLngPoint(point)).length < 2) {
-      setErr(f.errGeometryRequired)
+      result.geometry = f.errGeometryRequired
+    }
+
+    return result
+  }
+
+  function hasErrors(result) {
+    if (result.routeId || result.fareMin || result.fareMax || result.hoursStart || result.hoursEnd || result.geometry) return true
+    if (result.stations.some((s) => s.nameAr || s.nameEn)) return true
+    return false
+  }
+
+  function handleSave() {
+    const result = validate()
+    setErrors(result)
+    if (hasErrors(result)) return
+
+    if (form.stations.some((s) => s.allowPickup === false && s.allowDropoff === false)) {
+      setErrors((prev) => ({ ...prev, geometry: f.errPickupOrDropoff }))
       return
     }
 
-    setErr('')
+    setErrors({})
 
     const stations = form.stations.map((s, i) => ({
-      order:  i + 1,
-      nameAr: s.nameAr,
-      nameEn: s.nameEn,
-      coords: { lat: s.lat !== '' ? Number(s.lat) : 0, lng: s.lng !== '' ? Number(s.lng) : 0 },
+      order:       i + 1,
+      nameAr:      s.nameAr,
+      nameEn:      s.nameEn,
+      coords:      { lat: s.lat !== '' ? Number(s.lat) : 0, lng: s.lng !== '' ? Number(s.lng) : 0 },
       allowPickup: s.allowPickup !== false,
       allowDropoff: s.allowDropoff !== false,
     }))
@@ -900,14 +906,22 @@ function RouteFormModal({ initial, routeDoc, onRouteDocChange, onClose, onSave, 
       .filter(Boolean)
       .map((point) => [point.lng, point.lat])
 
+    const operatingHours = form.is24Hours
+      ? { start: '00:00', end: '23:59' }
+      : { start: form.hoursStart, end: form.hoursEnd }
+
     onSave({
-      routeId:        form.routeId,
-      type:           form.type,
+      routeId:         form.routeId,
+      type:            form.type,
       isBidirectional: form.isBidirectional === true,
-      fare:           { min: Number(form.fareMin), max: Number(form.fareMax) },
-      operatingHours: { start: form.hoursStart, end: form.hoursEnd },
-      stops:          stations,
-      geometry:       { type: 'LineString', coordinates: geometry },
+      fare:            { min: Number(form.fareMin), max: Number(form.fareMax) },
+      operatingHours,
+      stops:           stations,
+      geometry:        { type: 'LineString', coordinates: geometry },
+      verified:        form.verified === true,
+      frequency:       form.frequency || null,
+      peakHours:       form.peakHours ? form.peakHours.split(',').map((s) => s.trim()).filter(Boolean) : [],
+      tips:            form.tips ? form.tips.split('\n').map((s) => s.trim()).filter(Boolean) : [],
     })
   }
 
@@ -934,8 +948,16 @@ function RouteFormModal({ initial, routeDoc, onRouteDocChange, onClose, onSave, 
 
           <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-5">
             <div className="flex flex-col gap-3">
+
+              {/* ── Route info ── */}
               <SectionLabel>{f.sectionInfo}</SectionLabel>
-              <Field label={f.routeIdLabel} value={form.routeId} onChange={(v) => set('routeId', v)} placeholder={f.routeIdPlaceholder} />
+              <Field
+                label={f.routeIdLabel}
+                value={form.routeId}
+                onChange={(v) => set('routeId', v)}
+                placeholder={f.routeIdPlaceholder}
+                error={errors.routeId}
+              />
 
               <div>
                 <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>{f.typeLabel}</label>
@@ -950,87 +972,208 @@ function RouteFormModal({ initial, routeDoc, onRouteDocChange, onClose, onSave, 
               </div>
 
               <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#1B2A4A' }}>
-                <input
-                  type="checkbox"
-                  checked={form.isBidirectional === true}
-                  onChange={(e) => set('isBidirectional', e.target.checked)}
-                />
+                <input type="checkbox" checked={form.isBidirectional === true} onChange={(e) => set('isBidirectional', e.target.checked)} />
                 {f.bidirectionalLabel}
               </label>
 
               <div className="rounded-xl p-3" style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}>
                 <p className="text-xs font-bold mb-2" style={{ color: '#6B7280' }}>{f.autoNameHint}</p>
-                <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>
-                  {buildRoutePreviewNames(form.stations).nameAr || f.autoNameEmptyAr}
-                </p>
-                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
-                  {buildRoutePreviewNames(form.stations).nameEn || f.autoNameEmptyEn}
-                </p>
+                <p className="text-sm font-bold" style={{ color: '#1B2A4A' }}>{buildRoutePreviewNames(form.stations).nameAr || f.autoNameEmptyAr}</p>
+                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>{buildRoutePreviewNames(form.stations).nameEn || f.autoNameEmptyEn}</p>
               </div>
 
+              {/* ── Fare & hours ── */}
               <SectionLabel>{f.sectionFare}</SectionLabel>
               <div className="grid grid-cols-2 gap-3">
-                <Field label={f.fareMinLabel} value={form.fareMin} onChange={(v) => set('fareMin', v)} type="number" placeholder="8" />
-                <Field label={f.fareMaxLabel} value={form.fareMax} onChange={(v) => set('fareMax', v)} type="number" placeholder="12" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label={f.hoursStartLabel} value={form.hoursStart} onChange={(v) => set('hoursStart', v)} placeholder="6:00" />
-                <Field label={f.hoursEndLabel} value={form.hoursEnd} onChange={(v) => set('hoursEnd', v)} placeholder="23:00" />
+                <Field label={f.fareMinLabel} value={form.fareMin} onChange={(v) => set('fareMin', v)} type="number" placeholder="8"  error={errors.fareMin} />
+                <Field label={f.fareMaxLabel} value={form.fareMax} onChange={(v) => set('fareMax', v)} type="number" placeholder="12" error={errors.fareMax} />
               </div>
 
+              <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#1B2A4A' }}>
+                <input
+                  type="checkbox"
+                  checked={form.is24Hours === true}
+                  onChange={(e) => set('is24Hours', e.target.checked)}
+                />
+                {f.is24HoursLabel}
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field
+                  label={f.hoursStartLabel}
+                  value={form.hoursStart}
+                  onChange={(v) => set('hoursStart', v)}
+                  placeholder="6:00"
+                  disabled={form.is24Hours === true}
+                  error={errors.hoursStart}
+                />
+                <Field
+                  label={f.hoursEndLabel}
+                  value={form.hoursEnd}
+                  onChange={(v) => set('hoursEnd', v)}
+                  placeholder="23:00"
+                  disabled={form.is24Hours === true}
+                  error={errors.hoursEnd}
+                />
+              </div>
+
+              {/* ── Extra info ── */}
+              <SectionLabel>{f.sectionExtra}</SectionLabel>
+              <Field
+                label={f.frequencyLabel}
+                value={form.frequency}
+                onChange={(v) => set('frequency', v)}
+                placeholder={f.frequencyPlaceholder}
+              />
+              <Field
+                label={f.peakHoursLabel}
+                value={form.peakHours}
+                onChange={(v) => set('peakHours', v)}
+                placeholder={f.peakHoursPlaceholder}
+              />
+
+              <div>
+                <label className="block text-sm font-semibold mb-1" style={{ color: '#1B2A4A' }}>{f.tipsLabel}</label>
+                <textarea
+                  value={form.tips}
+                  onChange={(e) => set('tips', e.target.value)}
+                  placeholder={f.tipsPlaceholder}
+                  rows={3}
+                  className="w-full rounded-lg border px-3 py-2 text-sm outline-none resize-y"
+                  style={{ borderColor: '#D1D5DB', fontFamily: 'Cairo, sans-serif' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#F4A833')}
+                  onBlur={(e)  => (e.target.style.borderColor = '#D1D5DB')}
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: '#1B2A4A' }}>
+                <input type="checkbox" checked={form.verified === true} onChange={(e) => set('verified', e.target.checked)} />
+                {f.verifiedLabel}
+              </label>
+
+              {/* ── Stations ── */}
               <SectionLabel>{f.sectionStations}</SectionLabel>
 
               {form.stations.map((station, i) => {
-                const isFirst     = i === 0
-                const isLast      = i === form.stations.length - 1
+                const isFirst      = i === 0
+                const isLast       = i === form.stations.length - 1
                 const stationLabel = isFirst ? f.stationStart : isLast ? f.stationEnd : f.stationN(i + 1)
                 const borderColor  = isFirst ? '#D1FAE5' : isLast ? '#FEE2E2' : '#E5E7EB'
                 const hasCoords    = station.lat !== '' && station.lng !== ''
 
                 return (
-                  <div key={i} className="rounded-xl p-3 flex flex-col gap-2" style={{ backgroundColor: '#F9FAFB', border: `2px solid ${borderColor}` }}>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold" style={{ color: '#374151' }}>{stationLabel}</span>
-                      {!isFirst && !isLast && form.stations.length > 2 && (
-                        <button onClick={() => removeStation(i)} className="text-xs font-semibold" style={{ color: '#DC2626' }}>{f.removeStation}</button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Field label={f.stationArLabel} value={station.nameAr} onChange={(v) => setStation(i, 'nameAr', v)} placeholder={f.stationArPlaceholder} />
-                      <Field label={f.stationEnLabel} value={station.nameEn} onChange={(v) => setStation(i, 'nameEn', v)} placeholder={f.stationEnPlaceholder} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Field label={f.latLabel} value={station.lat} onChange={(v) => setStation(i, 'lat', v)} type="number" placeholder="31.2001" />
-                      <Field label={f.lngLabel} value={station.lng} onChange={(v) => setStation(i, 'lng', v)} type="number" placeholder="29.9187" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
-                        <input
-                          type="checkbox"
-                          checked={station.allowPickup !== false}
-                          onChange={(e) => setStation(i, 'allowPickup', e.target.checked)}
+                  <div key={i}>
+                    {/* Station card */}
+                    <div className="rounded-xl p-3 flex flex-col gap-2" style={{ backgroundColor: '#F9FAFB', border: `2px solid ${borderColor}` }}>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold" style={{ color: '#374151' }}>{stationLabel}</span>
+                        <div className="flex items-center gap-1">
+                          {/* Move up */}
+                          <button
+                            onClick={() => moveStationUp(i)}
+                            disabled={i === 0}
+                            title="تحريك لأعلى"
+                            style={{
+                              color: i === 0 ? '#D1D5DB' : '#1B2A4A',
+                              cursor: i === 0 ? 'not-allowed' : 'pointer',
+                              background: 'none', border: 'none', padding: '2px', lineHeight: 1,
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="18 15 12 9 6 15" />
+                            </svg>
+                          </button>
+                          {/* Move down */}
+                          <button
+                            onClick={() => moveStationDown(i)}
+                            disabled={i === form.stations.length - 1}
+                            title="تحريك لأسفل"
+                            style={{
+                              color: i === form.stations.length - 1 ? '#D1D5DB' : '#1B2A4A',
+                              cursor: i === form.stations.length - 1 ? 'not-allowed' : 'pointer',
+                              background: 'none', border: 'none', padding: '2px', lineHeight: 1,
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                          </button>
+                          {/* Remove (middle stations only) */}
+                          {!isFirst && !isLast && form.stations.length > 2 && (
+                            <button onClick={() => removeStation(i)} className="text-xs font-semibold mr-1" style={{ color: '#DC2626' }}>{f.removeStation}</button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Field
+                          label={f.stationArLabel}
+                          value={station.nameAr}
+                          onChange={(v) => setStation(i, 'nameAr', v)}
+                          placeholder={f.stationArPlaceholder}
+                          error={errors.stations?.[i]?.nameAr}
                         />
-                        {f.pickupAllowedLabel}
-                      </label>
-                      <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
-                        <input
-                          type="checkbox"
-                          checked={station.allowDropoff !== false}
-                          onChange={(e) => setStation(i, 'allowDropoff', e.target.checked)}
+                        <Field
+                          label={f.stationEnLabel}
+                          value={station.nameEn}
+                          onChange={(v) => setStation(i, 'nameEn', v)}
+                          placeholder={f.stationEnPlaceholder}
+                          error={errors.stations?.[i]?.nameEn}
                         />
-                        {f.dropoffAllowedLabel}
-                      </label>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Field label={f.latLabel} value={station.lat} onChange={(v) => setStation(i, 'lat', v)} type="number" placeholder="31.2001" />
+                        <Field label={f.lngLabel} value={station.lng} onChange={(v) => setStation(i, 'lng', v)} type="number" placeholder="29.9187" />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
+                          <input type="checkbox" checked={station.allowPickup !== false} onChange={(e) => setStation(i, 'allowPickup', e.target.checked)} />
+                          {f.pickupAllowedLabel}
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#374151' }}>
+                          <input type="checkbox" checked={station.allowDropoff !== false} onChange={(e) => setStation(i, 'allowDropoff', e.target.checked)} />
+                          {f.dropoffAllowedLabel}
+                        </label>
+                      </div>
+
+                      <button
+                        onClick={() => openMapPicker(i, stationLabel)}
+                        className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold w-full justify-center transition-opacity hover:opacity-80"
+                        style={{ backgroundColor: hasCoords ? '#D1FAE5' : '#FEF3C7', color: hasCoords ? '#065F46' : '#92400E' }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z" /><circle cx="12" cy="10" r="3" />
+                        </svg>
+                        {hasCoords ? `📍 ${Number(station.lat).toFixed(4)}, ${Number(station.lng).toFixed(4)}` : f.pickFromMap}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => openMapPicker(i, stationLabel)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold w-full justify-center transition-opacity hover:opacity-80"
-                      style={{ backgroundColor: hasCoords ? '#D1FAE5' : '#FEF3C7', color: hasCoords ? '#065F46' : '#92400E' }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z" /><circle cx="12" cy="10" r="3" />
-                      </svg>
-                      {hasCoords ? `📍 ${Number(station.lat).toFixed(4)}, ${Number(station.lng).toFixed(4)}` : f.pickFromMap}
-                    </button>
+
+                    {/* Insert-between button — shown after every station except the last */}
+                    {!isLast && (
+                      <div className="relative flex items-center my-1" style={{ height: 28 }}>
+                        <div
+                          className="absolute inset-x-0 top-1/2 -translate-y-1/2"
+                          style={{ borderTop: '2px dashed #F4A833', opacity: 0.6 }}
+                        />
+                        <button
+                          onClick={() => insertStationAfter(i)}
+                          title="إدراج محطة هنا"
+                          className="relative mx-auto flex items-center justify-center rounded-full text-xs font-bold hover:opacity-80 transition-opacity"
+                          style={{
+                            width: 22, height: 22,
+                            backgroundColor: '#F4A833',
+                            color: '#1B2A4A',
+                            border: '2px solid #fff',
+                            boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+                            flexShrink: 0,
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -1043,42 +1186,27 @@ function RouteFormModal({ initial, routeDoc, onRouteDocChange, onClose, onSave, 
                 {f.addStation}
               </button>
 
+              {/* ── Geometry ── */}
               <SectionLabel>{f.sectionGeometry}</SectionLabel>
-              <div
-                className="rounded-xl p-3 flex flex-col gap-3"
-                style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}
-              >
+              <div className="rounded-xl p-3 flex flex-col gap-3" style={{ backgroundColor: '#F9FAFB', border: '1px solid #E5E7EB' }}>
                 <p className="text-xs leading-6" style={{ color: '#6B7280' }}>
-                  {f.geometryHintStops}
-                  <br />
-                  {f.geometryHintRoute}
+                  {f.geometryHintStops}<br />{f.geometryHintRoute}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setGeometryEditorOpen(true)}
-                    className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
-                    style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }}
-                  >
+                  <button onClick={() => setGeometryEditorOpen(true)} className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80" style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }}>
                     {form.geometry?.length ? f.editGeometryBtn : f.drawGeometryBtn}
                   </button>
-                  <button
-                    onClick={() => set('geometry', buildGeometryFromStations(form.stations))}
-                    className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
-                    style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
-                  >
+                  <button onClick={() => set('geometry', buildGeometryFromStations(form.stations))} className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
                     {f.buildGeometryBtn}
                   </button>
-                  <button
-                    onClick={() => set('geometry', [])}
-                    className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80"
-                    style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
-                  >
+                  <button onClick={() => set('geometry', [])} className="rounded-lg px-3 py-2 text-xs font-semibold hover:opacity-80" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
                     {f.clearGeometryBtn}
                   </button>
                 </div>
-                <p className="text-xs font-semibold" style={{ color: '#374151' }}>
-                  {f.geometryPointsCount(form.geometry?.length || 0)}
-                </p>
+                <p className="text-xs font-semibold" style={{ color: '#374151' }}>{f.geometryPointsCount(form.geometry?.length || 0)}</p>
+                {errors.geometry && (
+                  <p className="text-xs" style={{ color: '#DC2626' }}>{errors.geometry}</p>
+                )}
               </div>
 
               {liveRouteDoc && (
@@ -1096,8 +1224,6 @@ function RouteFormModal({ initial, routeDoc, onRouteDocChange, onClose, onSave, 
                   />
                 </>
               )}
-
-              {err && <p className="text-sm text-center mt-3" style={{ color: '#DC2626' }}>{err}</p>}
             </div>
           </div>
 
@@ -1152,9 +1278,7 @@ function DeleteDialog({ routeName, onConfirm, onCancel, isPending }) {
         <h3 className="text-lg font-bold mb-2" style={{ color: '#1B2A4A' }}>{d.title}</h3>
         <p className="text-sm mb-6" style={{ color: '#6B7280' }}>{routeName}</p>
         <div className="flex gap-3">
-          <button onClick={onCancel} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>
-            {d.cancel}
-          </button>
+          <button onClick={onCancel} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-semibold border-2" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>{d.cancel}</button>
           <button onClick={onConfirm} disabled={isPending} className="flex-1 rounded-xl py-2.5 text-sm font-bold disabled:opacity-50" style={{ backgroundColor: '#DC2626', color: 'white' }}>
             {isPending ? d.deleting : d.confirm}
           </button>
@@ -1166,20 +1290,26 @@ function DeleteDialog({ routeName, onConfirm, onCancel, isPending }) {
 
 // ── Build edit form from a route document ─────────────────────────────────────
 function buildEditForm(route) {
+  const is24Hours = route.operatingHours?.start === '00:00' && route.operatingHours?.end === '23:59'
   return {
-    routeId:    route.routeId,
-    type:       route.type,
+    routeId:         route.routeId,
+    type:            route.type,
     isBidirectional: route.isBidirectional === true,
-    fareMin:    route.fare?.min    ?? '',
-    fareMax:    route.fare?.max    ?? '',
-    hoursStart: route.operatingHours?.start ?? '',
-    hoursEnd:   route.operatingHours?.end   ?? '',
-    stations:   route.stops?.length >= 2
+    fareMin:         route.fare?.min    ?? '',
+    fareMax:         route.fare?.max    ?? '',
+    hoursStart:      route.operatingHours?.start ?? '',
+    hoursEnd:        route.operatingHours?.end   ?? '',
+    is24Hours,
+    verified:        route.verified === true,
+    frequency:       route.frequency || '',
+    peakHours:       (route.peakHours || []).join(', '),
+    tips:            (route.tips || []).join('\n'),
+    stations:        route.stops?.length >= 2
       ? route.stops.map((s) => ({
-          nameAr: s.nameAr,
-          nameEn: s.nameEn,
-          lat:    s.coords?.lat != null && s.coords.lat !== 0 ? String(s.coords.lat) : '',
-          lng:    s.coords?.lng != null && s.coords.lng !== 0 ? String(s.coords.lng) : '',
+          nameAr:      s.nameAr,
+          nameEn:      s.nameEn,
+          lat:         s.coords?.lat != null && s.coords.lat !== 0 ? String(s.coords.lat) : '',
+          lng:         s.coords?.lng != null && s.coords.lng !== 0 ? String(s.coords.lng) : '',
           allowPickup: s.allowPickup !== false,
           allowDropoff: s.allowDropoff !== false,
         }))
@@ -1263,15 +1393,36 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {routePairs.map(({ route }, i) => {
-                    const badge     = TYPE_BADGE[route.type] || TYPE_BADGE.microbus
-                    const typeLabel = TYPE_OPTIONS.find((o) => o.value === route.type)?.label || route.type
+                  {routePairs.map(({ route, ratingBreakdown }, i) => {
+                    const badge       = TYPE_BADGE[route.type] || TYPE_BADGE.microbus
+                    const typeLabel   = TYPE_OPTIONS.find((o) => o.value === route.type)?.label || route.type
+                    const rb          = ratingBreakdown || { accurate: 0, inaccurate: 0, total: 0 }
+                    const showWarning = rb.total >= 3 && rb.inaccurate >= 2 * rb.accurate
                     return (
                       <tr key={route._id} style={{ borderBottom: '1px solid #F3F4F6' }} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3 text-xs" style={{ color: '#9CA3AF' }}>{(page - 1) * 10 + i + 1}</td>
                         <td className="px-4 py-3 font-mono text-xs" style={{ color: '#6B7280' }}>{route.routeId}</td>
                         <td className="px-4 py-3 font-medium" style={{ color: '#1B2A4A', maxWidth: 180 }}>
-                          <p className="truncate">{route.nameAr}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="truncate">{route.nameAr}</p>
+                            {!route.isActive && (
+                              <span
+                                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                                style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
+                              >
+                                موقوف
+                              </span>
+                            )}
+                            {showWarning && route.isActive && (
+                              <span
+                                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                                style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+                                title="تحذير: نسبة عالية من التقييمات السلبية"
+                              >
+                                ⚠️
+                              </span>
+                            )}
+                          </div>
                           {route.path?.length > 1 && (
                             <span
                               className="text-xs px-1.5 py-0.5 rounded-full inline-block mt-0.5"
@@ -1284,6 +1435,7 @@ export default function AdminPage() {
                               {route.pathStale ? 'مسار قديم' : 'مسار OSRM'}
                             </span>
                           )}
+                          <RatingBreakdown ratingBreakdown={rb} />
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: badge.bg, color: badge.color }}>{typeLabel}</span>
@@ -1310,12 +1462,7 @@ export default function AdminPage() {
                               </svg>
                             </button>
                             {route.isActive ? (
-                              <button
-                                onClick={() => setDeleteRoute(route)}
-                                className="p-1.5 rounded-lg hover:opacity-70"
-                                style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}
-                                title={t.deleteDialog.confirm}
-                              >
+                              <button onClick={() => setDeleteRoute(route)} className="p-1.5 rounded-lg hover:opacity-70" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }} title={t.deleteDialog.confirm}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                                   <polyline points="3 6 5 6 21 6" />
                                   <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
@@ -1324,13 +1471,7 @@ export default function AdminPage() {
                                 </svg>
                               </button>
                             ) : (
-                              <button
-                                onClick={() => handleRestore(route._id)}
-                                disabled={restoreMutation.isPending}
-                                className="p-1.5 rounded-lg hover:opacity-70 disabled:opacity-40"
-                                style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}
-                                title={tbl.restoreTitle}
-                              >
+                              <button onClick={() => handleRestore(route._id)} disabled={restoreMutation.isPending} className="p-1.5 rounded-lg hover:opacity-70 disabled:opacity-40" style={{ backgroundColor: '#D1FAE5', color: '#065F46' }} title={tbl.restoreTitle}>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                                   <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                                   <path d="M3 3v5h5" />
@@ -1349,19 +1490,15 @@ export default function AdminPage() {
 
           {totalPages > 1 && (
             <div className="flex justify-center items-center gap-3 p-4" style={{ borderTop: '1px solid #E5E7EB' }}>
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:cursor-not-allowed" style={{ borderColor: '#E5E7EB', color: page === 1 ? '#D1D5DB' : '#1B2A4A' }}>
-                {tbl.prevPage}
-              </button>
+              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:cursor-not-allowed" style={{ borderColor: '#E5E7EB', color: page === 1 ? '#D1D5DB' : '#1B2A4A' }}>{tbl.prevPage}</button>
               <span className="text-sm" style={{ color: '#6B7280' }}>{page} / {totalPages}</span>
-              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:cursor-not-allowed" style={{ borderColor: '#E5E7EB', color: page === totalPages ? '#D1D5DB' : '#1B2A4A' }}>
-                {tbl.nextPage}
-              </button>
+              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-4 py-1.5 rounded-lg text-sm font-semibold border disabled:cursor-not-allowed" style={{ borderColor: '#E5E7EB', color: page === totalPages ? '#D1D5DB' : '#1B2A4A' }}>{tbl.nextPage}</button>
             </div>
           )}
         </div>
       </div>
 
-      {addOpen    && <RouteFormModal title="إضافة خط جديد" onClose={() => setAddOpen(false)} onSave={handleCreate} isPending={createMutation.isPending} />}
+      {addOpen && <RouteFormModal title="إضافة خط جديد" onClose={() => setAddOpen(false)} onSave={handleCreate} isPending={createMutation.isPending} />}
       {editRoute && (
         <RouteFormModal
           title="تعديل الخط"
