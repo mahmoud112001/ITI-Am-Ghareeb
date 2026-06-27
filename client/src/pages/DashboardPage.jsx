@@ -65,9 +65,12 @@ function EmptyState({ message, actionLabel, actionTo }) {
 // ── Search History tab ────────────────────────────────────────────────────────
 function SearchHistoryTab() {
   const navigate = useNavigate()
-  const { data, isLoading } = useQuery({
+  const { user, isLoading: authIsLoading } = useAuth()
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['route-history'],
     queryFn:  () => api.get('/api/routes/history').then((r) => r.data.history),
+    enabled:  !!user && !authIsLoading,
+    retry:    false,
   })
 
   if (isLoading) {
@@ -80,6 +83,22 @@ function SearchHistoryTab() {
             style={{ backgroundColor: '#E5E7EB' }}
           />
         ))}
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div
+        className="rounded-2xl p-8 text-center mt-4"
+        style={{ backgroundColor: '#FEE2E2', border: '2px solid #DC2626' }}
+      >
+        <p className="text-base font-bold mb-1" style={{ color: '#7F1D1D' }}>
+          {t.errorTitle}
+        </p>
+        <p className="text-sm" style={{ color: '#991B1B' }}>
+          {t.errorBody}
+        </p>
       </div>
     )
   }
@@ -148,9 +167,12 @@ function SavedItemsTab() {
   const [pendingRouteId, setPendingRouteId] = useState(null)
   const [pendingTravelPlanId, setPendingTravelPlanId] = useState(null)
 
-  const { data, isLoading } = useQuery({
+  const { user, isLoading: authIsLoading } = useAuth()
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['saved-items'],
     queryFn:  () => api.get('/api/routes/saved').then((r) => r.data),
+    enabled:  !!user && !authIsLoading,
+    retry:    false,
   })
 
   const savedRoutes = data?.routes || []
@@ -167,6 +189,22 @@ function SavedItemsTab() {
             style={{ backgroundColor: '#E5E7EB' }}
           />
         ))}
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div
+        className="rounded-2xl p-8 text-center mt-4"
+        style={{ backgroundColor: '#FEE2E2', border: '2px solid #DC2626' }}
+      >
+        <p className="text-base font-bold mb-1" style={{ color: '#7F1D1D' }}>
+          {t.errorTitle}
+        </p>
+        <p className="text-sm" style={{ color: '#991B1B' }}>
+          {t.errorBody}
+        </p>
       </div>
     )
   }
