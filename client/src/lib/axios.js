@@ -72,7 +72,6 @@ api.interceptors.response.use(
         return api(originalConfig)
       } catch (refreshError) {
         setTokens(null, null)
-        window.location.href = '/login'
         return Promise.reject(refreshError)
       }
     }
