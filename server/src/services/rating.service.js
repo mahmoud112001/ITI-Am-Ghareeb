@@ -1,10 +1,5 @@
 const { TravelPlanRating, Rating, Route } = require('../models/index.js')
 
-/**
- * submitRating — creates or updates a user's rating for a route.
- * Uses upsert so a user can change their vote without hitting the unique index.
- * Throws 404 if the route doesn't exist.
- */
 async function submitRating(userId, routeId, isAccurate, comment = null) {
   const route = await Route.findOne({ routeId })
   if (!route) {
@@ -14,28 +9,27 @@ async function submitRating(userId, routeId, isAccurate, comment = null) {
   const rating = await Rating.findOneAndUpdate(
     { user: userId, route: route._id },
     { isAccurate, comment, user: userId, route: route._id },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
+    { upsert: true, new: true, setDefaultsOnInsert: true },
   )
+
+  // Auto-suspend check
+  const total = await Rating.countDocuments({ route: route._id })
+  if (total >= 3) {
+    const accurate = await Rating.countDocuments({ route: route._id, isAccurate: true })
+    const inaccurate = total - accurate
+    if (inaccurate >= 2 * accurate) {
+      await Route.findByIdAndUpdate(route._id, { isActive: false })
+    }
+  }
 
   return { message: 'تم إرسال تقييمك ✓', rating }
 }
 
-/**
- * submitTravelPlanRating — creates or updates a user's rating for a transfer travelPlan.
- * Stores journey-level feedback without affecting per-route accuracy stats.
- */
-async function submitTravelPlanRating(
-  userId,
-  travelPlanId,
-  routeIds,
-  transferCount,
-  isAccurate,
-  comment = null,
-) {
+async function submitTravelPlanRating(userId, travelPlanId, routeIds, transferCount, isAccurate, comment = null) {
   const normalizedRouteIds = Array.from(
     new Set(
       (Array.isArray(routeIds) ? routeIds : [])
-        .map((routeId) => String(routeId || '').trim())
+        .map((id) => String(id || '').trim())
         .filter(Boolean),
     ),
   )
@@ -48,31 +42,19 @@ async function submitTravelPlanRating(
     routeId: { $in: normalizedRouteIds },
     isActive: true,
   })
-
   if (existingRoutes !== normalizedRouteIds.length) {
     throw { statusCode: 404, message: 'بعض خطوط الرحلة غير موجودة' }
   }
 
   const rating = await TravelPlanRating.findOneAndUpdate(
     { user: userId, travelPlanId },
-    {
-      travelPlanId,
-      routeIds: normalizedRouteIds,
-      transferCount,
-      isAccurate,
-      comment,
-      user: userId,
-    },
+    { travelPlanId, routeIds: normalizedRouteIds, transferCount, isAccurate, comment, user: userId },
     { upsert: true, new: true, setDefaultsOnInsert: true },
   )
 
   return { message: 'تم إرسال تقييم الرحلة ✓', rating }
 }
 
-/**
- * getRatingStats — returns accuracy statistics for a given route.
- * Delegates to the Route static method which applies threshold rules and Arabic labels.
- */
 async function getRatingStats(routeId) {
   return Route.getAccuracyStats(routeId)
 }
