@@ -3,12 +3,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/axios'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
-const navigate = useNavigate()
+
 
 const MAX_COMMENT = 280
 
 export default function RatingModal({ routeId, routeName = null, onClose, onSuccess }) {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [selected, setSelected]     = useState(null)
   const [comment, setComment]       = useState('')
