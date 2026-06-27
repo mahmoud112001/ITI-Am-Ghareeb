@@ -3,8 +3,7 @@ const Joi = require('joi')
 const ratingService = require('../services/rating.service')
 const { protect } = require('../middleware/auth.middleware')
 const validate = require('../middleware/validate.middleware')
-
-// ── Validation schema ─────────────────────────────────────────────────────────
+const { ratingLimiter } = require('../middleware/rateLimit.middleware')
 
 const ratingSchema = Joi.object({
   routeId: Joi.string().required(),
@@ -20,17 +19,10 @@ const travelPlanRatingSchema = Joi.object({
   comment: Joi.string().max(280).optional().allow(null, ''),
 })
 
-// ── Controller handlers ───────────────────────────────────────────────────────
-
 const submitRating = async (req, res, next) => {
   try {
     const { routeId, isAccurate, comment } = req.body
-    const result = await ratingService.submitRating(
-      req.user.userId,
-      routeId,
-      isAccurate,
-      comment
-    )
+    const result = await ratingService.submitRating(req.user.userId, routeId, isAccurate, comment)
     res.status(200).json({ success: true, ...result })
   } catch (err) {
     next(err)
@@ -41,12 +33,7 @@ const submitTravelPlanRating = async (req, res, next) => {
   try {
     const { travelPlanId, routeIds, transferCount, isAccurate, comment } = req.body
     const result = await ratingService.submitTravelPlanRating(
-      req.user.userId,
-      travelPlanId,
-      routeIds,
-      transferCount,
-      isAccurate,
-      comment,
+      req.user.userId, travelPlanId, routeIds, transferCount, isAccurate, comment,
     )
     res.status(200).json({ success: true, ...result })
   } catch (err) {
@@ -63,12 +50,10 @@ const getRatingStats = async (req, res, next) => {
   }
 }
 
-// ── Router ────────────────────────────────────────────────────────────────────
-
 const router = express.Router()
 
-router.post('/', protect, validate(ratingSchema), submitRating)
-router.post('/travel-plan', protect, validate(travelPlanRatingSchema), submitTravelPlanRating)
+router.post('/', ratingLimiter, protect, validate(ratingSchema), submitRating)
+router.post('/travel-plan', ratingLimiter, protect, validate(travelPlanRatingSchema), submitTravelPlanRating)
 router.get('/:routeId/stats', getRatingStats)
 
 module.exports = router
