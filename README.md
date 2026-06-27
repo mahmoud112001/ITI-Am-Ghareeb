@@ -1714,7 +1714,521 @@ process.on('SIGTERM', async () => {
 
 ---
 
-## ملخص الـ Architecture — الصورة الكاملة
+---
+
+## 16. Architectural Decision Records (ADR)
+
+> **"The code tells you WHAT. This section tells you WHY."**
+>
+> كل قرار هنا اتاخد في سياق معين، ليه بدايل واضحة، وليه اتستبعد.
+> الهدف إنك لما تيجي تعدّل أو تتسع، تعرف إيه الـ constraints اللي خلّت الكود يبقى بالشكل ده.
+
+---
+
+### ADR-01 — ليه Monolithic وليه مش Microservices؟
+
+**القرار:** تطبيق واحد (Monolith) مقسّم داخلياً بـ MVC layers.
+
+**السياق:** مشروع graduation project، team صغيرة (1-2 أشخاص)، timeline محدود، الـ features واضحة ومش هتتغير جذرياً.
+
+**البدايل اللي اتفكرنا فيها:**
+
+| Option | المميزات | ليه اترفض |
+|--------|----------|-----------|
+| **Monolith (اخترنا)** | Deploy واحد، debugging بسيط، shared memory | تقدر تـscale بعدين |
+| Microservices | كل service تـscale منفردة | Overhead ضخم: service discovery، inter-service auth، distributed tracing، مش مناسب لـ team صغيرة |
+| Serverless Functions | Pay-per-request، zero infrastructure | Cold starts قاتلة للـ SSE streaming — الـ AI endpoint ممكن ياخد 10-30 ثانية، الـ serverless function هتـtimeout |
+
+**ليه Monolith كان الصح:**
+- الـ services عندنا محتاجة تتكلم مع بعض بسرعة (routes.service → ai.service → MongoDB) — في monolith ده function call، في microservices ده HTTP call بـ latency إضافي
+- الـ SSE streaming بيحتاج connection مفتوح — الـ monolith يتعامل معاه بشكل طبيعي
+- الـ ITI demo environment مش بيتحمل orchestration زي Kubernetes
+
+**متى تراجع القرار ده؟** لو المستخدمين وصلوا 10k+ concurrent و الـ AI endpoint بيأثر على الـ search performance — وقتها تفصل الـ AI service.
+
+---
+
+### ADR-02 — ليه MongoDB وليه مش PostgreSQL؟
+
+**القرار:** MongoDB Atlas مع Mongoose ODM.
+
+**السياق:** بيانات الـ routes ليها structure متغير (بعض الخطوط عندها waypoints، بعضها لأ، بعضها عندها peakHours، بعضها لأ). الـ stops عبارة عن array of objects embedded جوه الـ route نفسه.
+
+**البدايل:**
+
+| Option | المميزات | ليه اترفض |
+|--------|----------|-----------|
+| **MongoDB (اخترنا)** | Embedded documents طبيعية، 2dsphere built-in، JSON-native | مفيش ACID transactions قوية زي Postgres |
+| PostgreSQL + PostGIS | ACID كامل، powerful queries | الـ stops كانت هتبقى table منفصلة → JOIN في كل query بحث، وكل تغيير في schema يحتاج migration |
+| PostgreSQL (بدون PostGIS) | Simple، مألوف | الـ geospatial queries (nearest stop) هتبقى manual حسابات |
+| Firebase Firestore | Realtime، No backend needed | مش مفيد للـ BFS search اللي بيحتاج complex queries، وـpricelist غير متوقعة |
+
+**القرار الحاسم:** بيانات الـ route مش tabular — هي document. خط واحد = document واحد فيه كل حاجة (stops, geometry, fare, tips, operating hours). استخراجه query واحدة. في PostgreSQL كانت هتبقى 5 tables وـ4 JOINs لنفس العملية.
+
+**مثال concrete:**
+
+```js
+// MongoDB: استخراج خط مع كل محطاته وإحداثياتهم
+const route = await Route.findById(id)
+  .populate('stops.location', 'nameAr nameEn location.coordinates')
+
+// PostgreSQL equivalent:
+// SELECT r.*, s.order, l.name_ar, l.name_en, ST_AsGeoJSON(l.coords)
+// FROM routes r
+// JOIN route_stops s ON r.id = s.route_id
+// JOIN locations l ON s.location_id = l.id
+// WHERE r.id = $1
+// ORDER BY s.order ASC
+```
+
+**Trade-off مقبول:** فقدنا الـ multi-document ACID transactions الكاملة. لكن عمليات الـ write عندنا (save route, submit rating) هي single-document operations — مش محتاجين transactions.
+
+---
+
+### ADR-03 — ليه انفصلنا Controllers عن Services؟
+
+**القرار:** كل الـ business logic في `*.service.js`، الـ controllers مجرد HTTP adapters.
+
+**السياق:** كان ممكن نكتب كل حاجة في الـ controller زي كتير من الـ MERN tutorials بتعمل.
+
+**المشكلة لو حطينا الـ logic في الـ controller:**
+
+```js
+// ❌ الطريقة الـ naive — كل حاجة في controller
+const searchRoutes = async (req, res) => {
+  // validation
+  // DB queries (50 سطر)
+  // BFS algorithm (100 سطر)
+  // formatting (50 سطر)
+  // error handling
+  res.json(result)
+}
+// مش تقدر تـtest الـ business logic بدون HTTP layer
+// supertest.get('/api/routes/search') لكل test
+```
+
+```js
+// ✅ الطريقة اللي اخترناها
+// controller.js — 10 سطر
+const search = async (req, res, next) => {
+  try {
+    const result = await routesService.searchRoutes(
+      req.query.origin, req.query.destination, req.user?.userId
+    )
+    res.json({ success: true, data: result })
+  } catch (err) { next(err) }
+}
+
+// routes.service.js — 200 سطر من pure logic
+// يتـtest بـ:
+const result = await routesService.searchRoutes('الرمل', 'سيدي بشر', null)
+// مش محتاج HTTP server ولا supertest
+```
+
+**الفايدة الحقيقية:** الـ 67 test عندنا — الـ service tests أسرع بـ 10x من الـ integration tests لأنها بتشتغل بدون HTTP layer.
+
+---
+
+### ADR-04 — ليه JWT وليه مش Sessions؟
+
+**القرار:** Stateless JWT (access + refresh pair) بدلاً من server-side sessions.
+
+**البدايل:**
+
+| Option | كيف بيشتغل | ليه اترفض/اتختار |
+|--------|-----------|-----------------|
+| **JWT (اخترنا)** | Token في localStorage، Server ما بيخزنش session state | Stateless → سهل تـscale (أي server instance يقدر يـverify) |
+| Express-session + MongoDB | Session ID في cookie، Server بيخزن session في DB | كل request يعمل DB query للـ session → latency إضافي |
+| Redis Sessions | Session في Redis (سريع جداً) | يضيف Redis كـ dependency — overhead مش محتاجينه |
+
+**ليه Stateless مهم؟**
+
+لو عندك 3 server instances وراء load balancer:
+- **Sessions:** Request 1 وصل لـ Server A وخزن session فيه. Request 2 وصل لـ Server B → مش لاقي الـ session → logout! (لازم sticky sessions أو shared session store)
+- **JWT:** كل server instance بيـverify الـ token بنفسه بـ `JWT_SECRET` — مفيش shared state
+
+**Trade-off:** JWT مش ممكن تـrevoke قبل انتهاء الـ expiry (إلا لو عندك blacklist). عشان كده عملنا:
+- Access token عمره 15 دقيقة فقط (نافذة السرقة صغيرة)
+- Refresh token متخزن في DB → ممكن نمسحه = logout حقيقي
+
+---
+
+### ADR-05 — ليه Dual-Token وليه مش Token واحد طويل؟
+
+**القرار:** Access token (15 دقيقة) + Refresh token (7 أيام).
+
+**المشكلة اللي حلّها:**
+
+```
+Token طويل (7 أيام):
+  → لو اتسرق: الهاكر معاه 7 أيام
+  → مش ممكن تـrevoke (JWT stateless)
+  → الـ user مش هيعرف حصله حاجة
+
+Token قصير جداً (5 دقايق):
+  → كل 5 دقايق الـ user يعمل re-login
+  → UX كارثي
+
+الحل: Token قصير + طريقة تجدده automatically
+  Access (15 دقيقة) + Refresh (7 أيام في DB)
+  → لو access اتسرق: زوال في 15 دقيقة
+  → لو refresh اتسرق: نقدر نمسحه من DB
+  → UX مريح: الـ user مش بيحس بـ re-login
+```
+
+---
+
+### ADR-06 — ليه SSE وليه مش WebSocket للـ AI Streaming؟
+
+**القرار:** Server-Sent Events (SSE) عبر `res.write()` و `fetch()` ReadableStream.
+
+**البدايل:**
+
+| Option | الـ Protocol | ليه اترفض/اتختار |
+|--------|-------------|-----------------|
+| **SSE (اخترنا)** | HTTP/1.1 one-way stream | بسيط، نفس HTTP middleware، مدعوم في كل browser |
+| WebSocket | TCP two-way persistent | يحتاج `ws` library وـ upgrade protocol — overhead مش محتاجه |
+| Polling | HTTP request كل X ثواني | بطيء، مش real-time، بيحمّل الـ server بـ unnecessary requests |
+| Long Polling | HTTP request مفتوح لحد ما في response | أصعب في التنفيذ، مش standard |
+
+**ليه SSE كان الصح للـ use case ده:**
+
+الـ AI chat interaction هي: User بيبعت سؤال **مرة واحدة** ← Server بيـstream الرد.
+
+مفيش حاجة للـ two-way real-time — الـ user مش بيبعت messages وهو بيقرأ. لو كنا بنعمل collaborative whiteboard أو multiplayer game، وقتها WebSocket كان الصح.
+
+**مشكلة practical:** OpenAI SDK بيرجع `AsyncIterable` — كل chunk بيجي كـ JavaScript async iteration. الـ SSE بيتناسب مع ده بشكل طبيعي:
+
+```js
+for await (const chunk of stream) {
+  const text = chunk.choices[0]?.delta?.content || ''
+  res.write(`data: ${JSON.stringify({ text })}\n\n`)
+}
+```
+
+---
+
+### ADR-07 — ليه gpt-4o-mini وليه مش gpt-4o أو غيره؟
+
+**القرار:** `gpt-4o-mini` كـ LLM للـ AI persona.
+
+**السياق:** المشروع بيحتاج model يجاوب على أسئلة transit محددة بناءً على context موجود — مش محتاج complex reasoning.
+
+**البدايل:**
+
+| Model | القوة | التكلفة (per 1M tokens) | ليه اترفض/اتختار |
+|-------|-------|------------------------|-----------------|
+| **gpt-4o-mini (اخترنا)** | كافي للـ RAG transit Q&A | $0.15 input / $0.60 output | رخيص + سريع + كافي |
+| gpt-4o | أقوى بكتير | $5 input / $15 output | 33x أغلى — مش مبرر للـ use case |
+| gpt-4-turbo | قوي | $10 input / $30 output | 66x أغلى — overkill |
+| Claude claude-haiku-4-5 | سريع جداً | رخيص | مش في الـ OpenAI SDK الـ standard اللي اخترناه |
+| Gemini Flash | سريع ورخيص | رخيص | API مختلفة، يحتاج integration تانية |
+| Local LLM (Ollama) | مجاني بعد الـ setup | hardware cost | يحتاج GPU — مش متاح في الـ deployment environment |
+
+**القرار الحاسم:** الـ task عندنا هو **RAG retrieval + persona roleplay** — مش mathematical reasoning أو code generation. الـ context بيجيله structured Arabic text عن خطوط المواصلات، وهو المفروض يـrephrase الكلام بـ Alexandrian dialect.
+
+gpt-4o-mini بيعمل ده بكفاءة 100%. استخدام gpt-4o كان هيضاعف التكلفة من غير فايدة واضحة.
+
+**الـ temperature: 0.7 — ليه؟**
+
+```
+temperature = 0:   الرد ثابت ومتوقع تماماً (robotic)
+temperature = 0.7: شوية تنوع في الأسلوب (human-like)
+temperature = 1.0: إبداعي أوي، ممكن يخرج عن الموضوع
+```
+
+الـ 0.7 بيخلي "عم غريب" يرد بأساليب مختلفة شوية على نفس السؤال — مش copy-paste نفس الجملة كل مرة.
+
+**max_tokens: 600 — ليه؟**
+
+المستخدم بيسأل وهو واقف في الشارع. رد من 600 token = ~450 كلمة عربية = 3-4 جمل عملية. لو حطينا 2000 token الـ user هيقرأ رواية وهو لازم يمشي.
+
+---
+
+### ADR-08 — ليه RAG وليه مش Fine-tuning؟
+
+**القرار:** Retrieval-Augmented Generation (RAG) بدلاً من fine-tuning الـ model على بيانات الإسكندرية.
+
+**البدايل:**
+
+| Approach | كيف بيشتغل | ليه اترفض/اتختار |
+|----------|-----------|-----------------|
+| **RAG (اخترنا)** | جيب البيانات من DB في runtime وحطها في الـ prompt | البيانات ممكن تتحدث في أي وقت بدون re-training |
+| Fine-tuning | ادرب الـ model على بيانات الخطوط | لو خط اتغير لازم تـretrain — مكلف وبطيء |
+| Pure Prompt Engineering | حط كل الخطوط في الـ system prompt | 10 خطوط × بيانات كل خط = 50,000+ token في كل request = مكلف جداً |
+
+**المزية الكبيرة للـ RAG:**
+
+```
+Admin يضيف خط جديد في MongoDB
+           ↓
+الخط متاح فوراً للـ AI بدون أي تغيير في الكود
+           ↓
+المستخدم يسأل عنه → بيتـretrieve ويتحط في الـ context
+```
+
+لو كنا اخترنا fine-tuning: كل إضافة خط جديد = cycle تدريب جديد (ساعات + دولارات).
+
+**الـ RAG limitation عندنا:**
+
+الـ retrieval بتاعنا بسيط — MongoDB text search. مش vector search. لو عدد الخطوط وصل 1000+، الـ semantic search (Pinecone, pgvector) هيكون أدق من الـ keyword match. لكن للـ 50-100 خط الحاليين، الـ MongoDB text index كافي.
+
+---
+
+### ADR-09 — ليه BFS للـ Route Search وليه مش Dijkstra أو A*؟
+
+**القرار:** BFS-style search بـ state machine لـ multi-segment trip planning.
+
+**السياق:** المستخدم بيدخل origin وـdestination بالاسم (مش إحداثيات). الـ search بيحتاج يلاقي خط مباشر أو مسار بـ transfers.
+
+**البدايل:**
+
+| Algorithm | مناسب لـ | ليه اترفض/اتختار |
+|-----------|---------|-----------------|
+| **BFS-style (اخترنا)** | عدد محدود من الـ transfers (1-5) | بسيط، واضح، يقف بدري |
+| Dijkstra | الـ shortest path في weighted graph | يحتاج graph كامل في memory + edge weights دقيقة (وقت، مسافة، تعريفة) — بيانات مش متوفرة بالدقة دي |
+| A* | Dijkstra مع heuristic للسرعة | نفس متطلبات Dijkstra + الـ heuristic محتاج geospatial distance الحقيقية |
+| Google Maps API | الأدق | مدفوع + مش بيعرف خطوط الميكروباص الغير رسمية |
+
+**ليه BFS كان الصح:**
+
+شبكة الخطوط عندنا صغيرة (50-100 خط). الـ BFS بيجرب كل التركيبات الممكنة بـ 1 segment، لو مش لاقي يجرب 2، وهكذا. بياخد نتيجة في milliseconds.
+
+الـ Dijkstra يفيد لما يكون عندك graph حقيقي فيه edge weights دقيقة (وقت السفر بالدقيقة). بياناتنا الحالية عندها fare range وـpeak hours بس — مش عندنا "الخط ده بياخد 23 دقيقة في الضغط". من غير data دقيقة، الـ Dijkstra هيدي نتائج مظبوطة على ورق بس مش في الواقع.
+
+**الـ Scoring System:**
+
+```js
+score = numberOfStops + (walkDistanceMeters / 500)
+```
+
+بسيطة عمداً — عدد محطات أقل + مشي أقل = أحسن. ده بيلاقي "أسرع" رحلة مش "أرخص" ولا "أحسن نظرة". لو في المستقبل عايزين نضيف fare optimization، بيبقى easy to add هنا.
+
+---
+
+### ADR-10 — ليه قسّمنا الـ Endpoints بالطريقة دي؟
+
+**القرار:** تقسيم الـ API على 5 routers منفصلة.
+
+**السياق:** كان ممكن يبقى router واحد كبير بـ 22 endpoint.
+
+```
+/api/auth/*     ← كل حاجة متعلقة بالهوية
+/api/routes/*   ← كل حاجة متعلقة بالخطوط والبحث
+/api/ai/*       ← الـ AI chat (مفصولة عشان rate limit مختلف)
+/api/ratings/*  ← التقييمات (مفصولة عشان future feature: تقييم driver)
+/api/admin/*    ← الـ admin-only operations
+```
+
+**ليه الفصل ده؟**
+
+**1. Rate Limiting Granularity:**
+لو كل حاجة في router واحد، كل الـ endpoints بتاخد نفس الـ rate limit. الـ AI endpoint بيحتاج limit أكتر صرامة (20/hour) من الـ search (100/15min). الفصل بيخلي تطبيق مختلف limits على كل router بدون complexity.
+
+**2. Middleware Chain:**
+```js
+router.use('/admin', protect, requireAdmin, adminRouter)
+// protect + requireAdmin بيتطبق على كل الـ admin routes تلقائياً
+// مفيش حاجة تحطهم على كل endpoint منفردة
+```
+
+**3. Future Scalability:**
+لو قررنا نفصل الـ AI service لـ microservice منفصلة، `/api/ai/*` موجود في ملف واحد — refactor بسيط.
+
+**4. Team Clarity:**
+لو اشتغل عليه team أكبر، كل developer بيعرف أي ملف يفتح للـ feature اللي بيشتغل عليها.
+
+---
+
+### ADR-11 — ليه Soft Delete وليه مش Hard Delete للـ Routes؟
+
+**القرار:** `isActive: false` بدلاً من `Route.deleteOne()`.
+
+**السياق:** الـ admin لما بيحذف خط، بيعمل:
+
+```js
+route.isActive = false
+await route.save()
+// مش: await Route.deleteOne({ _id: id })
+```
+
+**ليه؟**
+
+**1. Data Integrity:**
+لو User عنده route محفوظة في `savedRoutes` وـRoute اتحذف فعلاً، الـ `savedRoutes` array هيبقى فيه orphan ObjectId بيشير لـ document مش موجود. بيعمل errors في الـ frontend.
+
+**2. Audit Trail:**
+الـ admin ممكن يحذف خط بالغلط. بـ soft delete ممكن يرجع يـactivate الخط من المنظور ده.
+
+**3. Analytics:**
+الخطوط القديمة ممكن تكون مهمة لإحصائيات "أكتر الخطوط بحثاً" حتى لو مش active دلوقتي.
+
+**4. Referential Integrity في MongoDB:**
+MongoDB مش بيعمل CASCADE DELETE تلقائياً زي SQL. لو حذفنا Route وعندنا Ratings وـSearchHistory بيشيروا ليه، هيبقى orphaned documents في الـ DB. الـ soft delete بيتجنب المشكلة دي بالكامل.
+
+**Trade-off:** الـ queries كلها محتاجة `{ isActive: true }` filter. في Mongoose ممكن نحل ده بـ:
+
+```js
+// مش موجود في الكود الحالي — مقترح للمستقبل
+routeSchema.pre(/^find/, function() {
+  this.where({ isActive: true })
+})
+```
+
+---
+
+### ADR-12 — ليه انفصلنا `app.js` عن `server.js`؟
+
+**القرار:** `app.js` بيعرّف Express app بدون `listen()`، و`server.js` بيعمل DB connection وبعدين `listen()`.
+
+**السياق:** كان ممكن يبقى ملف واحد.
+
+**السبب الوحيد والكافي: Testing.**
+
+```js
+// ❌ لو كل حاجة في server.js:
+// كل مرة test بتعمل require للـ app:
+//   → محاولة connection بـ MongoDB الحقيقية
+//   → server بيـlisten على port حقيقي
+//   → tests بتتعارض على نفس الـ port
+
+// ✅ الطريقة الحالية:
+// app.js: Express + Middleware + Routes (بدون DB وبدون listen)
+const app = require('../../app')  // safe في tests
+// mongodb-memory-server بيتولى الـ DB
+// supertest مش محتاج real TCP listen
+```
+
+**الـ test setup:**
+
+```js
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create()
+  await mongoose.connect(mongoServer.getUri())
+  app = require('../../app')  // يشتغل لأنه مش بيعمل mongoose.connect()
+})
+```
+
+لو `mongoose.connect()` كانت في `app.js`، الـ require ده كان هيحاول يتصل بـ real Atlas — يفشل في CI/CD environment.
+
+---
+
+### ADR-13 — ليه optionalProtect بدل protect في الـ Search؟
+
+**القرار:** Search endpoint بيقبل الـ requests بدون token، ولو في token بيستخدمه.
+
+```js
+router.get('/search', apiLimiter, optionalProtect, searchRoutes)
+// مش: router.get('/search', apiLimiter, protect, searchRoutes)
+```
+
+**ليه؟**
+
+**الـ Product Decision:** مش عايزين نجبر الناس يعملوا account عشان يبحثوا عن خط. الـ core value proposition (البحث) محتاجة تكون accessible للكل.
+
+**الـ Technical Benefit:** لو المستخدم logged in، بنحفظ الـ search history. لو مش logged in، الـ search بيشتغل بردو بس من غير تسجيل.
+
+```js
+// optionalProtect في auth.middleware.js
+const optionalProtect = (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1]
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET)
+      req.user = decoded
+    }
+  } catch {
+    // Token غلط أو منتهي — مش مشكلة، بنكمل بدونه
+  }
+  next()  // دايماً بنكمل
+}
+```
+
+---
+
+### ADR-14 — ليه isBidirectional في الـ Route Model؟
+
+**القرار:** Route document واحد بيمثل الخط في الاتجاهين لو `isBidirectional: true`.
+
+**البديل:** إنشاء Route منفصلة لكل اتجاه.
+
+**ليه `isBidirectional` كان أحسن:**
+
+```
+بدون isBidirectional:
+  خط المنشية - سيدي بشر = 2 documents
+  خط الرمل - محطة مصر = 2 documents
+  50 خط = 100 documents
+  الـ admin بيضيف خط = يضيف اتنين
+  لو السعر اتغير = يعدّل في اتنين
+
+مع isBidirectional:
+  خط المنشية - سيدي بشر = document واحد (isBidirectional: true)
+  لو السعر اتغير = تعديل في مكان واحد
+  الـ search engine بيعمل flip للـ stops array لما يبحث عكس الاتجاه
+```
+
+**الـ Trade-off:** الـ search algorithm بيبقى أعقد شوية — لازم يولّد "route variants" (forward + reverse). لكن ده أفضل بكتير من data inconsistency لو نسيت تعدّل في الاتجاه التاني.
+
+---
+
+### ADR-15 — ليه Mongoose وليه MongoDB Native Driver؟
+
+**القرار:** Mongoose 8 ODM بدلاً من MongoDB native driver مباشرة.
+
+| Feature | Mongoose | Native Driver |
+|---------|----------|---------------|
+| Schema validation | ✅ Built-in | ❌ Manual |
+| Pre/Post hooks | ✅ (password hash) | ❌ Manual |
+| Populate (JOINs) | ✅ | ❌ Manual lookups |
+| TypeScript types | ✅ auto-generated | ❌ Manual |
+| Query building | ✅ chainable API | ❌ Raw objects |
+
+**الـ Hook اللي بيستخدمه المشروع:**
+
+```js
+// بدون Mongoose pre-save hook:
+// في كل مكان بنحفظ user لازم نتذكر نعمل hash
+userService.register() → bcrypt.hash()  ← ممكن ننسى
+userService.updatePassword() → bcrypt.hash()  ← ممكن ننسى
+userService.resetPassword() → bcrypt.hash()  ← ممكن ننسى
+
+// مع Mongoose:
+userSchema.pre('save', async function() {
+  if (this.isModified('passwordHash')) {
+    this.passwordHash = await bcrypt.hash(this.passwordHash, 12)
+  }
+})
+// بيحصل automatically في كل save — مفيش فرصة ننسى
+```
+
+---
+
+### خلاصة الـ ADRs — الـ Core Principles
+
+الـ 15 قرار فوق بيتحكم فيهم 4 مبادئ أساسية:
+
+```
+1. SIMPLICITY FIRST
+   كل مرة كان في خيار أبسط وكافي، اخترناه.
+   (Monolith لا Microservices، BFS لا Dijkstra، SSE لا WebSocket)
+
+2. TEST-ABILITY
+   كل قرار اتأثر بـ "هنقدر نـtest ده بسهولة؟"
+   (app.js/server.js split، Services منفصلة عن Controllers)
+
+3. DATA INTEGRITY
+   البيانات محتاجة تكون صح حتى لو الكود اتغير.
+   (Soft delete، isBidirectional، Mongoose hooks)
+
+4. COST CONSCIOUSNESS
+   المشروع ده على free tiers.
+   (gpt-4o-mini مش gpt-4o، RAG مش fine-tuning، Rate limiting للـ AI)
+```
+
+---
+
+
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
