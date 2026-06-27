@@ -182,7 +182,7 @@ export default function SearchPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
-  const { user } = useAuth()
+  const { user, isLoading: authIsLoading } = useAuth()
 
   const [origin, setOrigin]           = useState(searchParams.get('origin') || '')
   const [destination, setDestination] = useState(searchParams.get('destination') || '')
@@ -207,10 +207,12 @@ export default function SearchPage() {
   const [swapFlash, setSwapFlash] = useState(false)
 
   // Stations for autocomplete
-  const { data: stationsData } = useQuery({
+  const { data: stationsData, isError: isStationsError } = useQuery({
     queryKey: ['stations'],
     queryFn:  () => api.get('/api/routes/stations').then((r) => r.data.stations),
     staleTime: Infinity,
+    enabled:   !authIsLoading,
+    retry:     false,
   })
   const stations = stationsData || []
 
@@ -219,6 +221,7 @@ export default function SearchPage() {
     queryFn:  () => api.get('/api/routes/saved').then((r) => r.data),
     enabled: !!user,
     staleTime: 300000,
+    retry: false,
   })
 
   useEffect(() => {
@@ -399,6 +402,24 @@ export default function SearchPage() {
   const noNearbyResults = isSuccessNearby && nearbyResults?.length === 0
 
   const originLabel = originCoords && !origin.trim() ? t.myLocationLabel : origin
+
+  if (isStationsError) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center"
+        style={{ backgroundColor: '#FDF6EC', fontFamily: 'Cairo, sans-serif' }}
+        dir="rtl"
+      >
+        <AmGhareebAvatar size={64} className="mb-4" />
+        <p className="text-lg font-bold mb-2" style={{ color: '#1B2A4A' }}>
+          {t.errorTitle}
+        </p>
+        <p className="text-sm" style={{ color: '#6B7280' }}>
+          {t.errorBody}
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div
