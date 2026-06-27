@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/axios'
+import { useAuth } from '../context/AuthContext'
+import { useNavigate } from 'react-router-dom'
+const navigate = useNavigate()
 
 const MAX_COMMENT = 280
 
 export default function RatingModal({ routeId, routeName = null, onClose, onSuccess }) {
+  const { user } = useAuth()
   const queryClient = useQueryClient()
-  const [selected, setSelected]     = useState(null) // true | false | null
+  const [selected, setSelected]     = useState(null)
   const [comment, setComment]       = useState('')
   const [successMsg, setSuccessMsg] = useState(false)
   const [apiError, setApiError]     = useState('')
@@ -21,9 +25,7 @@ export default function RatingModal({ routeId, routeName = null, onClose, onSucc
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ratings', routeId] })
       setSuccessMsg(true)
-      setTimeout(() => {
-        onSuccess?.()
-      }, 2000)
+      setTimeout(() => { onSuccess?.() }, 2000)
     },
     onError: (err) => {
       setApiError(err?.response?.data?.message || 'حدث خطأ، حاول مرة أخرى')
@@ -36,7 +38,6 @@ export default function RatingModal({ routeId, routeName = null, onClose, onSucc
     mutation.mutate()
   }
 
-  // Close on overlay click
   function handleOverlayClick(e) {
     if (e.target === e.currentTarget) onClose()
   }
@@ -72,8 +73,24 @@ export default function RatingModal({ routeId, routeName = null, onClose, onSucc
           {routeName ? `هل معلومات ${routeName} صح ومحدّثة؟` : 'هل المعلومات دي صح ومحدّثة؟'}
         </p>
 
-        {/* Success state */}
-        {successMsg ? (
+        {/* Auth guard */}
+        {!user ? (
+          <div
+            className="rounded-xl p-5 text-center flex flex-col items-center gap-4"
+            style={{ backgroundColor: '#FFFBEB', border: '1px solid #FCD34D' }}
+          >
+            <p className="text-sm font-semibold" style={{ color: '#92400E' }}>
+              لازم تكون مسجّل دخول عشان تقدر تقيّم
+            </p>
+            <button
+              onClick={() => { onClose(); navigate('/login') }}
+              className="rounded-xl px-6 py-2.5 text-sm font-bold hover:opacity-80 transition-opacity"
+              style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}
+            >
+              سجّل دخول
+            </button>
+          </div>
+        ) : successMsg ? (
           <div
             className="rounded-xl py-4 text-center font-bold text-base"
             style={{ backgroundColor: '#D1FAE5', color: '#065F46' }}
@@ -117,11 +134,7 @@ export default function RatingModal({ routeId, routeName = null, onClose, onSucc
                 maxLength={MAX_COMMENT}
                 placeholder="إضافة تعليق — مثلاً: التعريفة اتغيرت أو فيه محطة جديدة (اختياري)"
                 className="w-full rounded-xl border-2 px-3 py-2.5 text-sm resize-none outline-none transition-all"
-                style={{
-                  fontFamily:  'Cairo, sans-serif',
-                  borderColor: '#E5E7EB',
-                  lineHeight:  '1.6',
-                }}
+                style={{ fontFamily: 'Cairo, sans-serif', borderColor: '#E5E7EB', lineHeight: '1.6' }}
                 onFocus={(e) => (e.target.style.borderColor = '#F4A833')}
                 onBlur={(e)  => (e.target.style.borderColor = '#E5E7EB')}
               />
@@ -135,14 +148,12 @@ export default function RatingModal({ routeId, routeName = null, onClose, onSucc
               </div>
             </div>
 
-            {/* API error */}
             {apiError && (
               <p className="text-sm text-center mb-3" style={{ color: '#DC2626' }}>
                 {apiError}
               </p>
             )}
 
-            {/* Submit */}
             <button
               onClick={handleSubmit}
               disabled={selected === null || mutation.isPending}
