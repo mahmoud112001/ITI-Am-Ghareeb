@@ -41,7 +41,11 @@ function StationAutocomplete({ value, onChange, placeholder, stations, flash = f
   const listRef  = useRef(null)
 
   const filtered = value.trim()
-    ? stations.filter((s) => s.includes(value.trim())).slice(0, 6)
+    ? stations
+        .filter((s) =>
+          s.toLowerCase().includes(value.trim().toLowerCase())
+        )
+        .slice(0, 6)
     : []
 
   function select(station) {
@@ -183,7 +187,10 @@ export default function SearchPage() {
 
   const [origin, setOrigin]           = useState(searchParams.get('origin') || '')
   const [destination, setDestination] = useState(searchParams.get('destination') || '')
-  const [searched, setSearched]       = useState(false)
+  const [searched, setSearched]       = useState(
+    // Auto-trigger search if both params are present in the URL (e.g. links from AIChatPage)
+    !!(searchParams.get('origin') && searchParams.get('destination'))
+  )
   const [nearbySearch, setNearbySearch] = useState(false)
   const [ratingRouteId, setRatingRouteId] = useState(null)
   const [ratingRouteName, setRatingRouteName] = useState(null)
@@ -226,7 +233,7 @@ export default function SearchPage() {
 
   // Search query (disabled until user clicks search)
   const { data: results, isFetching, isSuccess, isError: isSearchError } = useQuery({
-    queryKey: ['search', origin, destination, originCoords],
+    queryKey: ['search', origin, destination, originCoords?.lat, originCoords?.lng],
     queryFn:  () => {
       const params = { origin, destination }
       if (originCoords) {
@@ -240,7 +247,7 @@ export default function SearchPage() {
 
   // Nearby search query
   const { data: nearbyResults, isFetching: isFetchingNearby, isSuccess: isSuccessNearby, isError: isNearbyError } = useQuery({
-    queryKey: ['nearby-routes', originCoords],
+    queryKey: ['nearby-routes', originCoords?.lat, originCoords?.lng],
     queryFn:  () => {
       if (!originCoords) return []
       const params = { lat: originCoords.lat, lng: originCoords.lng }
