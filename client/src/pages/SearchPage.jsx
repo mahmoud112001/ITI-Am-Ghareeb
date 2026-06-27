@@ -10,8 +10,6 @@ import AmGhareebAvatar from '../components/AmGhareebAvatar'
 import { useAuth } from '../context/AuthContext'
 import ar from '../i18n/ar'
 
-const { search: t } = ar
-
 // ── Skeleton placeholder ──────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
@@ -180,6 +178,7 @@ function Spinner() {
 
 // ── SearchPage ────────────────────────────────────────────────────────────────
 export default function SearchPage() {
+  const t = ar.search
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
