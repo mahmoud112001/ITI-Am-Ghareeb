@@ -36,13 +36,30 @@ router.post('/refresh', authController.refresh)
 router.post('/logout', protect, authController.logout)
 router.get('/me', protect, authController.getMe)
 
+// ── Google OAuth ──────────────────────────────────────────────────────────────
+
+const isGoogleConfigured =
+  !!process.env.GOOGLE_CLIENT_ID &&
+  !!process.env.GOOGLE_CLIENT_SECRET &&
+  !!process.env.GOOGLE_CALLBACK_URL
+
+const googleUnavailable = (_req, res) =>
+  res.status(503).json({ success: false, message: 'Google login is not configured on this server.' })
+
 // Google OAuth — start the flow
-router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }))
+router.get(
+  '/google',
+  isGoogleConfigured
+    ? passport.authenticate('google', { scope: ['profile', 'email'] })
+    : googleUnavailable
+)
 
 // Google OAuth — callback after user grants permission
 router.get(
   '/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
+  isGoogleConfigured
+    ? passport.authenticate('google', { session: false, failureRedirect: '/login' })
+    : googleUnavailable,
   authController.googleCallback
 )
 
