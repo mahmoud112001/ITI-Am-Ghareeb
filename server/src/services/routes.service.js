@@ -14,6 +14,8 @@ const {
   toPublicRoute,
 } = require("../utils/routeNetwork.js");
 
+const { redisClient } = require("../config/redis.js");
+
 const WALKING_TRANSFER_METERS = 500;
 const LOCATION_RESULT_LIMIT = 8;
 const MAX_TRANSFER_SEARCH_DEPTH = 5;
@@ -54,7 +56,9 @@ function getRouteDirections(route) {
 }
 
 function getStopId(stop) {
-  return String(stop?.location?._id || stop?.location || stop?._id || stop || "");
+  return String(
+    stop?.location?._id || stop?.location || stop?._id || stop || "",
+  );
 }
 
 function canPickup(stop) {
@@ -67,9 +71,7 @@ function canDropoff(stop) {
 
 function getNearestMapPointDistance(route, userLocation) {
   const mapPoints =
-    route.geometryPoints ||
-    geometryToPointSummaries(route.geometry) ||
-    [];
+    route.geometryPoints || geometryToPointSummaries(route.geometry) || [];
   let minDistance = Number.POSITIVE_INFINITY;
 
   for (const point of mapPoints) {
@@ -172,10 +174,18 @@ function buildBoardableStopIndex(variants) {
   return { byLocationId, all };
 }
 
-function getDestinationAlightOptions(variant, boardIndex, destinationIdSet = null) {
+function getDestinationAlightOptions(
+  variant,
+  boardIndex,
+  destinationIdSet = null,
+) {
   const bestByLocation = new Map();
 
-  for (let stopIndex = boardIndex + 1; stopIndex < variant.stops.length; stopIndex += 1) {
+  for (
+    let stopIndex = boardIndex + 1;
+    stopIndex < variant.stops.length;
+    stopIndex += 1
+  ) {
     const stop = variant.stops[stopIndex];
     if (!canDropoff(stop)) continue;
 
@@ -221,10 +231,15 @@ function getOriginBoardOptionsFromLocations(boardIndex, originLocationIdSet) {
 
 function getOriginBoardOptionsFromCoords(boardIndex, originCoords) {
   return boardIndex.all
-    .filter((boardOption) => hasMeaningfulCoords(boardOption.locationSummary?.coords))
+    .filter((boardOption) =>
+      hasMeaningfulCoords(boardOption.locationSummary?.coords),
+    )
     .map((option) => ({
       option,
-      walkDistanceMeters: distanceMeters(originCoords, option.locationSummary.coords),
+      walkDistanceMeters: distanceMeters(
+        originCoords,
+        option.locationSummary.coords,
+      ),
     }))
     .sort((a, b) => a.walkDistanceMeters - b.walkDistanceMeters)
     .slice(0, MAX_INITIAL_BOARD_OPTIONS);
@@ -233,7 +248,9 @@ function getOriginBoardOptionsFromCoords(boardIndex, originCoords) {
 function getTransferBoardOptions(boardIndex, currentLocation) {
   if (!currentLocation) return [];
 
-  const currentLocationId = currentLocation._id ? String(currentLocation._id) : null;
+  const currentLocationId = currentLocation._id
+    ? String(currentLocation._id)
+    : null;
   const options = [];
 
   if (currentLocationId && boardIndex.byLocationId.has(currentLocationId)) {
@@ -270,7 +287,10 @@ function getTransferBoardOptions(boardIndex, currentLocation) {
   for (const candidate of options) {
     const key = `${candidate.option.variant.variantKey}:${candidate.option.stopIndex}`;
     const existing = deduped.get(key);
-    if (!existing || candidate.walkDistanceMeters < existing.walkDistanceMeters) {
+    if (
+      !existing ||
+      candidate.walkDistanceMeters < existing.walkDistanceMeters
+    ) {
       deduped.set(key, candidate);
     }
   }
@@ -298,7 +318,9 @@ function sortRawTravelPlans(a, b) {
     return a.score - b.score;
   }
 
-  return buildRawTravelPlanId(a.travelSegments).localeCompare(buildRawTravelPlanId(b.travelSegments));
+  return buildRawTravelPlanId(a.travelSegments).localeCompare(
+    buildRawTravelPlanId(b.travelSegments),
+  );
 }
 
 function searchTravelPlansBySegmentCount({
@@ -331,15 +353,21 @@ function searchTravelPlansBySegmentCount({
 
   const results = [];
 
-  for (let travelSegmentIndex = 0; travelSegmentIndex < exactTravelSegmentCount; travelSegmentIndex += 1) {
-    const isFinalTravelSegment = travelSegmentIndex === exactTravelSegmentCount - 1;
+  for (
+    let travelSegmentIndex = 0;
+    travelSegmentIndex < exactTravelSegmentCount;
+    travelSegmentIndex += 1
+  ) {
+    const isFinalTravelSegment =
+      travelSegmentIndex === exactTravelSegmentCount - 1;
     const nextStates = [];
     const bestStateScoreByKey = new Map();
 
     for (const state of states) {
-      const boardChoices = state.travelSegments.length === 0
-        ? initialBoardOptions
-        : getTransferBoardOptions(boardIndex, state.currentLocation);
+      const boardChoices =
+        state.travelSegments.length === 0
+          ? initialBoardOptions
+          : getTransferBoardOptions(boardIndex, state.currentLocation);
 
       for (const boardChoice of boardChoices) {
         const routeId = boardChoice.option.variant.routeId;
@@ -378,7 +406,8 @@ function searchTravelPlansBySegmentCount({
 
           if (isFinalTravelSegment) {
             results.push({
-              travelPlanType: exactTravelSegmentCount === 1 ? "direct" : "transfer",
+              travelPlanType:
+                exactTravelSegmentCount === 1 ? "direct" : "transfer",
               score: nextScore,
               originWalkDistanceMeters:
                 state.travelSegments.length === 0
@@ -469,9 +498,15 @@ function buildTravelSegment(routeDoc, selectedDirection, match, accuracyStats) {
   };
 }
 
-async function formatDirectTravelPlanResult(travelSegments, originCoords = null, originWalkDistanceMeters = 0) {
+async function formatDirectTravelPlanResult(
+  travelSegments,
+  originCoords = null,
+  originWalkDistanceMeters = 0,
+) {
   const [rawTravelSegment] = travelSegments;
-  const accuracyStats = await Route.getAccuracyStats(rawTravelSegment.route.routeId);
+  const accuracyStats = await Route.getAccuracyStats(
+    rawTravelSegment.route.routeId,
+  );
   const travelSegment = buildTravelSegment(
     rawTravelSegment.route,
     rawTravelSegment.selectedDirection,
@@ -505,9 +540,14 @@ function mergeFareRanges(firstFare, secondFare) {
   };
 }
 
-async function formatTransferTravelPlanResult(travelSegments, originWalkDistanceMeters = 0) {
+async function formatTransferTravelPlanResult(
+  travelSegments,
+  originWalkDistanceMeters = 0,
+) {
   const accuracyStatsList = await Promise.all(
-    travelSegments.map((travelSegment) => Route.getAccuracyStats(travelSegment.route.routeId)),
+    travelSegments.map((travelSegment) =>
+      Route.getAccuracyStats(travelSegment.route.routeId),
+    ),
   );
 
   const formattedTravelSegments = travelSegments.map((travelSegment, index) =>
@@ -523,7 +563,10 @@ async function formatTransferTravelPlanResult(travelSegments, originWalkDistance
   for (let index = 0; index < formattedTravelSegments.length - 1; index += 1) {
     const fromTravelSegment = formattedTravelSegments[index];
     const toTravelSegment = formattedTravelSegments[index + 1];
-    const distance = getTransferDistance(fromTravelSegment.alightAt, toTravelSegment.boardAt);
+    const distance = getTransferDistance(
+      fromTravelSegment.alightAt,
+      toTravelSegment.boardAt,
+    );
 
     transferWalks.push({
       from: summarizeLocation(fromTravelSegment.alightAt),
@@ -582,7 +625,11 @@ function getTravelSegmentRouteIds(travelSegments = []) {
   return Array.from(
     new Set(
       travelSegments
-        .map((travelSegment) => String(travelSegment?.route?.routeId || travelSegment?.routeId || "").trim())
+        .map((travelSegment) =>
+          String(
+            travelSegment?.route?.routeId || travelSegment?.routeId || "",
+          ).trim(),
+        )
         .filter(Boolean),
     ),
   );
@@ -591,9 +638,9 @@ function getTravelSegmentRouteIds(travelSegments = []) {
 function findRouteStopById(route, stopId) {
   if (!route || !stopId) return null;
   return (
-    route.stops?.find((stop) => String(stop?._id) === String(stopId))
-    || route.stations?.find((stop) => String(stop?._id) === String(stopId))
-    || null
+    route.stops?.find((stop) => String(stop?._id) === String(stopId)) ||
+    route.stations?.find((stop) => String(stop?._id) === String(stopId)) ||
+    null
   );
 }
 
@@ -603,9 +650,19 @@ async function searchRoutes(
   userId = null,
   originCoords = null,
 ) {
-  const normalizedOrigin = typeof originQuery === "string" ? originQuery.trim() : "";
+  const normalizedOrigin =
+    typeof originQuery === "string" ? originQuery.trim() : "";
   const normalizedDestination =
     typeof destinationQuery === "string" ? destinationQuery.trim() : "";
+  const cacheKey = `search:${normalizedOrigin}:${normalizedDestination}`;
+  const cachedData = await redisClient.get(cacheKey);
+
+  if (cachedData) {
+    console.log("🔥 CACHE HIT:", cacheKey);
+    return JSON.parse(cachedData);
+  }
+
+  console.log("❌ CACHE MISS:", cacheKey);
   const useLocationSearch =
     originCoords && originCoords.lat != null && originCoords.lng != null;
 
@@ -619,20 +676,30 @@ async function searchRoutes(
     throw { statusCode: 400, message: "يرجى إدخال نقطة البداية والوجهة" };
   }
 
-  const [activeRoutes, destinationLocations, originLocations] = await Promise.all([
-    loadAllActiveRoutes(),
-    findMatchingLocations(normalizedDestination),
-    useLocationSearch ? Promise.resolve([]) : findMatchingLocations(normalizedOrigin),
-  ]);
+  const [activeRoutes, destinationLocations, originLocations] =
+    await Promise.all([
+      loadAllActiveRoutes(),
+      findMatchingLocations(normalizedDestination),
+      useLocationSearch
+        ? Promise.resolve([])
+        : findMatchingLocations(normalizedOrigin),
+    ]);
 
-  if (!destinationLocations.length || (!useLocationSearch && !originLocations.length)) {
+  if (
+    !destinationLocations.length ||
+    (!useLocationSearch && !originLocations.length)
+  ) {
     return [];
   }
 
   const variants = buildRouteVariants(activeRoutes);
   const boardIndex = buildBoardableStopIndex(variants);
-  const destinationIdSet = new Set(destinationLocations.map((location) => String(location._id)));
-  const originLocationIdSet = new Set(originLocations.map((location) => String(location._id)));
+  const destinationIdSet = new Set(
+    destinationLocations.map((location) => String(location._id)),
+  );
+  const originLocationIdSet = new Set(
+    originLocations.map((location) => String(location._id)),
+  );
 
   const searchOptions = {
     boardIndex,
@@ -657,7 +724,11 @@ async function searchRoutes(
       .slice(0, MAX_ONE_TRANSFER_FALLBACK_RESULTS)
       .sort(sortRawTravelPlans);
   } else {
-    for (let transferCount = 2; transferCount <= MAX_TRANSFER_SEARCH_DEPTH; transferCount += 1) {
+    for (
+      let transferCount = 2;
+      transferCount <= MAX_TRANSFER_SEARCH_DEPTH;
+      transferCount += 1
+    ) {
       const exactMatches = searchTravelPlansBySegmentCount({
         ...searchOptions,
         exactTravelSegmentCount: transferCount + 1,
@@ -697,6 +768,9 @@ async function searchRoutes(
     }),
   );
 
+  await redisClient.setEx(cacheKey, 300, JSON.stringify(results));
+  console.log("💾 SAVED TO CACHE:", cacheKey);
+
   return results;
 }
 
@@ -711,7 +785,10 @@ async function findNearestRoutes(userCoords, userId = null) {
     routes
       .map((route) => {
         const publicRoute = toPublicRoute(route);
-        const nearestDistance = getNearestMapPointDistance(publicRoute, userCoords);
+        const nearestDistance = getNearestMapPointDistance(
+          publicRoute,
+          userCoords,
+        );
         if (nearestDistance == null) return null;
         return {
           route,
@@ -760,21 +837,35 @@ async function findNearestRoutes(userCoords, userId = null) {
 }
 
 async function getStations() {
-  const activeLocationIds = await Route.distinct("stops.location", {
-    isActive: true,
-  });
+  const cacheKey = "stations";
 
-  const locations = await Location.find(
-    { _id: { $in: activeLocationIds } },
-    { nameAr: 1 },
-  )
-    .sort({ nameAr: 1 })
-    .lean();
+  // Check Redis first
+  const cachedStations = await redisClient.get(cacheKey);
 
-  return Array.from(new Set(locations.map((location) => location.nameAr)));
+  if (cachedStations) {
+    console.log("🔥 Stations from Redis");
+    return JSON.parse(cachedStations);
+  }
+
+  // If not found in Redis
+  console.log("📦 Stations from MongoDB");
+
+  const stations = await Route.distinct("stations.nameAr");
+  stations.sort((a, b) => a.localeCompare(b, "ar"));
+
+  // Save in Redis for 1 hour
+  await redisClient.setEx(cacheKey, 3600, JSON.stringify(stations));
+
+  console.log("💾 Stations saved to Redis");
+
+  return stations;
 }
 
 async function getRouteById(routeId, selectedDirection = "forward") {
+  const cacheKey = `route:${routeId}:${selectedDirection}`;
+  const cached = await redisClient.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
   const route = await populateRouteGraph(
     Route.findOne({ routeId, isActive: true }),
   );
@@ -789,10 +880,13 @@ async function getRouteById(routeId, selectedDirection = "forward") {
       : "forward";
 
   const accuracyStats = await Route.getAccuracyStats(routeId);
-  return {
+  const result = {
     route: toPublicRoute(route, { selectedDirection: normalizedDirection }),
     accuracyStats,
   };
+
+  await redisClient.set(cacheKey, JSON.stringify(result));
+  return result;
 }
 
 async function saveRoute(userId, routeId) {
@@ -813,10 +907,16 @@ async function saveRoute(userId, routeId) {
 async function saveTravelPlan(userId, travelPlan = {}) {
   const normalizedTravelPlanId = String(travelPlan?.travelPlanId || "").trim();
   const normalizedTransferCount = Number(travelPlan?.transferCount || 0);
-  const normalizedTravelSegments = Array.isArray(travelPlan?.travelSegments) ? travelPlan.travelSegments : [];
+  const normalizedTravelSegments = Array.isArray(travelPlan?.travelSegments)
+    ? travelPlan.travelSegments
+    : [];
   const normalizedRouteIds = getTravelSegmentRouteIds(normalizedTravelSegments);
 
-  if (!normalizedTravelPlanId || normalizedTransferCount < 1 || normalizedTravelSegments.length < 2) {
+  if (
+    !normalizedTravelPlanId ||
+    normalizedTransferCount < 1 ||
+    normalizedTravelSegments.length < 2
+  ) {
     throw { statusCode: 400, message: "بيانات الرحلة غير مكتملة" };
   }
 
@@ -830,25 +930,35 @@ async function saveTravelPlan(userId, travelPlan = {}) {
   }
 
   const savedTravelSegments = normalizedTravelSegments.map((travelSegment) => ({
-    routeId: String(travelSegment?.route?.routeId || travelSegment?.routeId || "").trim(),
+    routeId: String(
+      travelSegment?.route?.routeId || travelSegment?.routeId || "",
+    ).trim(),
     selectedDirection:
-      travelSegment?.route?.selectedDirection === "reverse" || travelSegment?.selectedDirection === "reverse"
+      travelSegment?.route?.selectedDirection === "reverse" ||
+      travelSegment?.selectedDirection === "reverse"
         ? "reverse"
         : "forward",
-    originStopId: travelSegment?.route?.matchedSegment?.originStopId || travelSegment?.originStopId || travelSegment?.boardAt?._id || null,
+    originStopId:
+      travelSegment?.route?.matchedSegment?.originStopId ||
+      travelSegment?.originStopId ||
+      travelSegment?.boardAt?._id ||
+      null,
     destinationStopId:
-      travelSegment?.route?.matchedSegment?.destinationStopId || travelSegment?.destinationStopId || travelSegment?.alightAt?._id || null,
+      travelSegment?.route?.matchedSegment?.destinationStopId ||
+      travelSegment?.destinationStopId ||
+      travelSegment?.alightAt?._id ||
+      null,
     boardAt: normalizeLocationSummary(travelSegment?.boardAt),
     alightAt: normalizeLocationSummary(travelSegment?.alightAt),
   }));
 
-  const transferWalks = (Array.isArray(travelPlan?.transferWalks) ? travelPlan.transferWalks : []).map(
-    (walk) => ({
-      from: normalizeLocationSummary(walk?.from),
-      to: normalizeLocationSummary(walk?.to),
-      distanceMeters: Math.max(0, Number(walk?.distanceMeters || 0)),
-    }),
-  );
+  const transferWalks = (
+    Array.isArray(travelPlan?.transferWalks) ? travelPlan.transferWalks : []
+  ).map((walk) => ({
+    from: normalizeLocationSummary(walk?.from),
+    to: normalizeLocationSummary(walk?.to),
+    distanceMeters: Math.max(0, Number(walk?.distanceMeters || 0)),
+  }));
 
   const savedTravelPlanDoc = await SavedTravelPlan.findOneAndUpdate(
     { user: userId, travelPlanId: normalizedTravelPlanId },
@@ -970,9 +1080,12 @@ async function getSavedRoutes(userId) {
               route: {
                 ...route,
                 matchedSegment: {
-                  originStopId: savedTravelSegment.originStopId || boardAt?._id || null,
+                  originStopId:
+                    savedTravelSegment.originStopId || boardAt?._id || null,
                   destinationStopId:
-                    savedTravelSegment.destinationStopId || alightAt?._id || null,
+                    savedTravelSegment.destinationStopId ||
+                    alightAt?._id ||
+                    null,
                 },
               },
               accuracyStats,
@@ -990,8 +1103,8 @@ async function getSavedRoutes(userId) {
         return null;
       }
 
-      const transferPlaces = (savedTravelPlanDoc.transferWalks || []).map((walk) =>
-        walk.distanceMeters === 0 ? walk.from : walk.to,
+      const transferPlaces = (savedTravelPlanDoc.transferWalks || []).map(
+        (walk) => (walk.distanceMeters === 0 ? walk.from : walk.to),
       );
 
       return {
@@ -1003,7 +1116,8 @@ async function getSavedRoutes(userId) {
         transferPlaces,
         transferPlace: transferPlaces[0] || null,
         totalFare: savedTravelPlanDoc.totalFare || null,
-        originWalkDistanceMeters: savedTravelPlanDoc.originWalkDistanceMeters || 0,
+        originWalkDistanceMeters:
+          savedTravelPlanDoc.originWalkDistanceMeters || 0,
         travelSegments: validTravelSegments,
       };
     }),

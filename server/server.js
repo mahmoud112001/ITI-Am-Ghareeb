@@ -7,6 +7,8 @@ const PORT = process.env.PORT || 5000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 3000;
 
+const { connectRedis } = require("./src/config/redis");
+
 // ── DB Connection with Retry ──────────────────────────────────────────────────
 async function connectDB(attempt = 1) {
   console.log(`جاري الاتصال بقاعدة البيانات... (محاولة ${attempt} من ${MAX_RETRIES})`);
@@ -30,6 +32,7 @@ async function connectDB(attempt = 1) {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 async function bootstrap() {
   await connectDB();
+  await connectRedis();
   app.listen(PORT, () => {
     console.log(`السيرفر شغال على البورت ${PORT} ✓`);
     console.log(`الرابط: http://localhost:${PORT}/api`);

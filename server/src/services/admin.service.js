@@ -1,38 +1,46 @@
-const { Route, User, Rating, SearchHistory } = require('../models/index.js')
-const { extractRouteFields, populateRouteGraph, syncRouteLocations, toAdminRoute } = require('../utils/routeNetwork.js')
-const osrmService = require('./osrm.service')
+const { Route, User, Rating, SearchHistory } = require("../models/index.js");
+const {
+  extractRouteFields,
+  populateRouteGraph,
+  syncRouteLocations,
+  toAdminRoute,
+} = require("../utils/routeNetwork.js");
+const { redisClient } = require("../config/redis.js");
+const osrmService = require("./osrm.service");
 
 function normalizeWaypoint(waypoint) {
-  const lat = Number(waypoint?.lat)
-  const lng = Number(waypoint?.lng)
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
-  return { lat, lng }
+  const lat = Number(waypoint?.lat);
+  const lng = Number(waypoint?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
 }
 
 function normalizeWaypoints(waypoints = []) {
-  if (!Array.isArray(waypoints)) return []
-  return waypoints.map(normalizeWaypoint).filter(Boolean)
+  if (!Array.isArray(waypoints)) return [];
+  return waypoints.map(normalizeWaypoint).filter(Boolean);
 }
 
 function geometrySignature(geometry) {
   return (geometry?.coordinates || [])
     .map((point) => {
-      if (!Array.isArray(point) || point.length !== 2) return null
-      return point.map((value) => Number(value).toFixed(6)).join(',')
+      if (!Array.isArray(point) || point.length !== 2) return null;
+      return point.map((value) => Number(value).toFixed(6)).join(",");
     })
     .filter(Boolean)
-    .join('|')
+    .join("|");
 }
 
 async function getAllRoutes(page = 1, limit = 10) {
-  const pageNum = parseInt(page, 10) || 1
-  const limitNum = parseInt(limit, 10) || 10
-  const skip = (pageNum - 1) * limitNum
+  const pageNum = parseInt(page, 10) || 1;
+  const limitNum = parseInt(limit, 10) || 10;
+  const skip = (pageNum - 1) * limitNum;
 
   const [routes, total] = await Promise.all([
-    populateRouteGraph(Route.find().skip(skip).limit(limitNum).sort({ createdAt: -1 })),
+    populateRouteGraph(
+      Route.find().skip(skip).limit(limitNum).sort({ createdAt: -1 }),
+    ),
     Route.countDocuments(),
-  ])
+  ]);
 
   const routesWithStats = await Promise.all(
     routes.map(async (route) => {
@@ -41,147 +49,193 @@ async function getAllRoutes(page = 1, limit = 10) {
           Route.getAccuracyStats(route.routeId),
           Rating.countDocuments({ route: route._id, isAccurate: true }),
           Rating.countDocuments({ route: route._id, isAccurate: false }),
-        ])
+        ]);
         return {
           route: toAdminRoute(route),
           accuracyStats,
-          ratingBreakdown: { accurate, inaccurate, total: accurate + inaccurate },
-        }
+          ratingBreakdown: {
+            accurate,
+            inaccurate,
+            total: accurate + inaccurate,
+          },
+        };
       } catch {
         return {
           route: toAdminRoute(route),
           accuracyStats: null,
           ratingBreakdown: { accurate: 0, inaccurate: 0, total: 0 },
-        }
+        };
       }
     }),
-  )
+  );
 
-  return { routes: routesWithStats, total, page: pageNum, pages: Math.ceil(total / limitNum) }
+  return {
+    routes: routesWithStats,
+    total,
+    page: pageNum,
+    pages: Math.ceil(total / limitNum),
+  };
 }
 
 async function getRouteRatings(id) {
-  const route = await Route.findById(id)
+  const route = await Route.findById(id);
   if (!route) {
-    throw { statusCode: 404, message: 'الخط غير موجود' }
+    throw { statusCode: 404, message: "الخط غير موجود" };
   }
 
   const ratings = await Rating.find({ route: route._id })
-    .populate('user', 'name email')
-    .sort({ createdAt: -1 })
+    .populate("user", "name email")
+    .sort({ createdAt: -1 });
 
-  const accurate = ratings.filter((r) => r.isAccurate === true)
-  const inaccurate = ratings.filter((r) => r.isAccurate === false)
+  const accurate = ratings.filter((r) => r.isAccurate === true);
+  const inaccurate = ratings.filter((r) => r.isAccurate === false);
 
-  return { accurate, inaccurate, total: ratings.length }
+  return { accurate, inaccurate, total: ratings.length };
 }
 
 async function createRoute(data) {
-  const existing = await Route.findOne({ routeId: data.routeId })
+  const existing = await Route.findOne({ routeId: data.routeId });
   if (existing) {
-    throw { statusCode: 409, message: 'رقم الخط مستخدم بالفعل' }
+    throw { statusCode: 409, message: "رقم الخط مستخدم بالفعل" };
   }
 
-  const route = new Route(extractRouteFields(data))
-  await syncRouteLocations(route, data)
-  return populateRouteGraph(Route.findById(route._id))
+  const route = new Route(extractRouteFields(data));
+  await syncRouteLocations(route, data);
+  await redisClient.del("stations");
+  return populateRouteGraph(Route.findById(route._id));
 }
 
 async function updateRoute(id, data) {
-  const route = await Route.findById(id)
+  const route = await Route.findById(id);
   if (!route) {
-    throw { statusCode: 404, message: 'الخط غير موجود' }
+    throw { statusCode: 404, message: "الخط غير موجود" };
   }
 
   if (data.routeId && data.routeId !== route.routeId) {
-    const existing = await Route.findOne({ routeId: data.routeId, _id: { $ne: route._id } })
+    const existing = await Route.findOne({
+      routeId: data.routeId,
+      _id: { $ne: route._id },
+    });
     if (existing) {
-      throw { statusCode: 409, message: 'رقم الخط مستخدم بالفعل' }
+      throw { statusCode: 409, message: "رقم الخط مستخدم بالفعل" };
     }
   }
 
-  const hadGeneratedPath = Array.isArray(route.path) && route.path.length > 1
-  const existingGeometrySignature = geometrySignature(route.geometry)
+  const hadGeneratedPath = Array.isArray(route.path) && route.path.length > 1;
+  const existingGeometrySignature = geometrySignature(route.geometry);
 
-  Object.assign(route, extractRouteFields({ ...route.toObject(), ...data }))
+  Object.assign(route, extractRouteFields({ ...route.toObject(), ...data }));
 
-  const nextGeometrySignature = geometrySignature(route.geometry)
-  const routeShapeChanged = existingGeometrySignature !== nextGeometrySignature
+  const nextGeometrySignature = geometrySignature(route.geometry);
+  const routeShapeChanged = existingGeometrySignature !== nextGeometrySignature;
 
   if (hadGeneratedPath && routeShapeChanged) {
-    route.pathStale = true
+    route.pathStale = true;
   }
 
   if (data.stops || data.geometry) {
-    await syncRouteLocations(route, { ...route.toObject(), ...data })
+    await syncRouteLocations(route, { ...route.toObject(), ...data });
     if (hadGeneratedPath && routeShapeChanged) {
-      route.pathStale = true
-      await route.save()
+      route.pathStale = true;
+      await route.save();
     }
   } else {
-    await route.save()
+    await route.save();
   }
 
-  return populateRouteGraph(Route.findById(route._id))
+  await redisClient.del(`route:${route.routeId}`);
+  await redisClient.del(`route:${route.routeId}:forward`);
+  await redisClient.del(`route:${route.routeId}:reverse`);
+  await redisClient.del("stations");
+
+  return populateRouteGraph(Route.findById(route._id));
 }
 
 async function softDeleteRoute(id) {
-  const route = await Route.findByIdAndUpdate(id, { isActive: false }, { new: true })
-  if (!route) throw { statusCode: 404, message: 'الخط غير موجود' }
-  return { message: 'تم حذف الخط ✓' }
+  const route = await Route.findByIdAndUpdate(
+    id,
+    { isActive: false },
+    { new: true },
+  );
+  if (!route) throw { statusCode: 404, message: "الخط غير موجود" };
+  await redisClient.del("stations");
+  await redisClient.del(`route:${route.routeId}`);
+  await redisClient.del(`route:${route.routeId}:forward`);
+  await redisClient.del(`route:${route.routeId}:reverse`);
+  return { message: "تم حذف الخط ✓" };
 }
 
 async function restoreRoute(id) {
-  const route = await Route.findByIdAndUpdate(id, { isActive: true }, { new: true })
-  if (!route) throw { statusCode: 404, message: 'الخط غير موجود' }
-  return { message: 'تم استعادة الخط ✓' }
+  const route = await Route.findByIdAndUpdate(
+    id,
+    { isActive: true },
+    { new: true },
+  );
+  if (!route) throw { statusCode: 404, message: "الخط غير موجود" };
+  return { message: "تم استعادة الخط ✓" };
 }
 
 async function getStats() {
-  const [totalRoutes, totalUsers, totalRatings, topSearched] = await Promise.all([
-    Route.countDocuments({ isActive: true }),
-    User.countDocuments({ role: 'user' }),
-    Rating.countDocuments(),
-    SearchHistory.aggregate([
-      { $group: { _id: { origin: '$originQuery', destination: '$destinationQuery' }, count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 5 },
-      { $project: { _id: 0, origin: '$_id.origin', destination: '$_id.destination', count: 1 } },
-    ]),
-  ])
-  return { totalRoutes, totalUsers, totalRatings, topSearched }
+  const [totalRoutes, totalUsers, totalRatings, topSearched] =
+    await Promise.all([
+      Route.countDocuments({ isActive: true }),
+      User.countDocuments({ role: "user" }),
+      Rating.countDocuments(),
+      SearchHistory.aggregate([
+        {
+          $group: {
+            _id: { origin: "$originQuery", destination: "$destinationQuery" },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+        {
+          $project: {
+            _id: 0,
+            origin: "$_id.origin",
+            destination: "$_id.destination",
+            count: 1,
+          },
+        },
+      ]),
+    ]);
+  return { totalRoutes, totalUsers, totalRatings, topSearched };
 }
 
 async function generateRoutePath(id, waypoints) {
-  const route = await populateRouteGraph(Route.findById(id))
-  if (!route) throw { statusCode: 404, message: 'Route not found' }
+  const route = await populateRouteGraph(Route.findById(id));
+  if (!route) throw { statusCode: 404, message: "Route not found" };
 
   const cleanWaypoints = Array.isArray(waypoints)
     ? normalizeWaypoints(waypoints)
-    : normalizeWaypoints(route.waypoints)
+    : normalizeWaypoints(route.waypoints);
 
   if (Array.isArray(waypoints)) {
-    route.waypoints = cleanWaypoints
+    route.waypoints = cleanWaypoints;
   }
 
-  let coords = osrmService.buildRoutingCoords({ ...route.toObject(), waypoints: cleanWaypoints })
+  let coords = osrmService.buildRoutingCoords({
+    ...route.toObject(),
+    waypoints: cleanWaypoints,
+  });
 
   if (coords.length < 2 && cleanWaypoints.length >= 2) {
-    coords = cleanWaypoints
+    coords = cleanWaypoints;
   }
 
   if (coords.length < 2) {
     throw {
       statusCode: 400,
       message: `OSRM needs at least two valid points. Received ${cleanWaypoints.length} valid waypoint(s). Save route geometry or add at least two OSRM points.`,
-    }
+    };
   }
 
-  const generatedPath = await osrmService.generatePath(coords)
-  route.path = generatedPath
-  route.pathGeneratedAt = new Date()
-  route.pathStale = false
-  await route.save()
+  const generatedPath = await osrmService.generatePath(coords);
+  route.path = generatedPath;
+  route.pathGeneratedAt = new Date();
+  route.pathStale = false;
+  await route.save();
 
   return {
     pointCount: generatedPath.length,
@@ -189,7 +243,7 @@ async function generateRoutePath(id, waypoints) {
     pathGeneratedAt: route.pathGeneratedAt,
     pathStale: route.pathStale,
     waypoints: route.waypoints,
-  }
+  };
 }
 
 async function clearRoutePath(id) {
@@ -197,9 +251,9 @@ async function clearRoutePath(id) {
     id,
     { path: [], pathGeneratedAt: null, pathStale: false, waypoints: [] },
     { new: true },
-  )
-  if (!route) throw { statusCode: 404, message: 'Route not found' }
-  return { message: 'Generated path cleared' }
+  );
+  if (!route) throw { statusCode: 404, message: "Route not found" };
+  return { message: "Generated path cleared" };
 }
 
 module.exports = {
@@ -212,4 +266,4 @@ module.exports = {
   getStats,
   generateRoutePath,
   clearRoutePath,
-}
+};
