@@ -5,7 +5,7 @@ const {
   syncRouteLocations,
   toAdminRoute,
 } = require("../utils/routeNetwork.js");
-const { redisClient } = require("../config/redis.js");
+const { deleteCache } = require("../utils/cache.js");
 const osrmService = require("./osrm.service");
 
 function normalizeWaypoint(waypoint) {
@@ -101,7 +101,7 @@ async function createRoute(data) {
 
   const route = new Route(extractRouteFields(data));
   await syncRouteLocations(route, data);
-  await redisClient.del("stations");
+  await deleteCache("stations");
   return populateRouteGraph(Route.findById(route._id));
 }
 
@@ -143,10 +143,10 @@ async function updateRoute(id, data) {
     await route.save();
   }
 
-  await redisClient.del(`route:${route.routeId}`);
-  await redisClient.del(`route:${route.routeId}:forward`);
-  await redisClient.del(`route:${route.routeId}:reverse`);
-  await redisClient.del("stations");
+  await deleteCache(`route:${route.routeId}`);
+  await deleteCache(`route:${route.routeId}:forward`);
+  await deleteCache(`route:${route.routeId}:reverse`);
+  await deleteCache("stations");
 
   return populateRouteGraph(Route.findById(route._id));
 }
@@ -158,10 +158,10 @@ async function softDeleteRoute(id) {
     { new: true },
   );
   if (!route) throw { statusCode: 404, message: "الخط غير موجود" };
-  await redisClient.del("stations");
-  await redisClient.del(`route:${route.routeId}`);
-  await redisClient.del(`route:${route.routeId}:forward`);
-  await redisClient.del(`route:${route.routeId}:reverse`);
+  await deleteCache("stations");
+  await deleteCache(`route:${route.routeId}`);
+  await deleteCache(`route:${route.routeId}:forward`);
+  await deleteCache(`route:${route.routeId}:reverse`);
   return { message: "تم حذف الخط ✓" };
 }
 

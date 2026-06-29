@@ -14,7 +14,7 @@ const {
   toPublicRoute,
 } = require("../utils/routeNetwork.js");
 
-const { redisClient } = require("../config/redis.js");
+const { getCache, setCache } = require("../utils/cache.js");
 
 const WALKING_TRANSFER_METERS = 500;
 const LOCATION_RESULT_LIMIT = 8;
@@ -655,11 +655,11 @@ async function searchRoutes(
   const normalizedDestination =
     typeof destinationQuery === "string" ? destinationQuery.trim() : "";
   const cacheKey = `search:${normalizedOrigin}:${normalizedDestination}`;
-  const cachedData = await redisClient.get(cacheKey);
+  const cachedData = await getCache(cacheKey);
 
   if (cachedData) {
     console.log("🔥 CACHE HIT:", cacheKey);
-    return JSON.parse(cachedData);
+    return cachedData;
   }
 
   console.log("❌ CACHE MISS:", cacheKey);
@@ -768,7 +768,7 @@ async function searchRoutes(
     }),
   );
 
-  await redisClient.setEx(cacheKey, 300, JSON.stringify(results));
+  await setCache(cacheKey, results, 300);
   console.log("💾 SAVED TO CACHE:", cacheKey);
 
   return results;
@@ -840,11 +840,11 @@ async function getStations() {
   const cacheKey = "stations";
 
   // Check Redis first
-  const cachedStations = await redisClient.get(cacheKey);
+  const cachedStations = await getCache(cacheKey);
 
   if (cachedStations) {
     console.log("🔥 Stations from Redis");
-    return JSON.parse(cachedStations);
+    return cachedStations;
   }
 
   // If not found in Redis
@@ -854,7 +854,7 @@ async function getStations() {
   stations.sort((a, b) => a.localeCompare(b, "ar"));
 
   // Save in Redis for 1 hour
-  await redisClient.setEx(cacheKey, 3600, JSON.stringify(stations));
+  await setCache(cacheKey, stations, 3600);
 
   console.log("💾 Stations saved to Redis");
 
@@ -863,8 +863,8 @@ async function getStations() {
 
 async function getRouteById(routeId, selectedDirection = "forward") {
   const cacheKey = `route:${routeId}:${selectedDirection}`;
-  const cached = await redisClient.get(cacheKey);
-  if (cached) return JSON.parse(cached);
+  const cached = await getCache(cacheKey);
+  if (cached) return cached;
 
   const route = await populateRouteGraph(
     Route.findOne({ routeId, isActive: true }),
@@ -885,7 +885,7 @@ async function getRouteById(routeId, selectedDirection = "forward") {
     accuracyStats,
   };
 
-  await redisClient.set(cacheKey, JSON.stringify(result));
+  await setCache(cacheKey, result);
   return result;
 }
 
