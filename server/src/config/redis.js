@@ -13,8 +13,11 @@ redisClient.on("connect", () => {
 });
 
 async function connectRedis() {
-  if (!redisClient.isOpen) {
+  if (redisClient.isOpen) return;
+  try {
     await redisClient.connect();
+  } catch (err) {
+    console.warn("⚠️  Redis غير متاح — التطبيق يعمل بدون cache:", err.message);
   }
 }
 
