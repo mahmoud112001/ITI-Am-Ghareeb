@@ -150,12 +150,13 @@ export default function Navbar() {
                 </NavLink>
               )}
 
-              <span
-                className="text-sm font-semibold"
+              <NavLink
+                to="/profile"
+                className="text-sm font-semibold hover:underline"
                 style={{ color: "#F4A833" }}
               >
                 {user.name}
-              </span>
+              </NavLink>
               <button
                 onClick={handleLogout}
                 className="text-sm font-medium text-white border border-white rounded-lg px-3 py-1.5 hover:bg-white hover:text-navy transition-colors duration-150"
@@ -241,12 +242,14 @@ export default function Navbar() {
                 </NavLink>
               )}
 
-              <span
-                className="text-sm font-semibold px-3 py-1"
+              <NavLink
+                to="/profile"
+                className="text-sm font-semibold px-3 py-1 hover:underline"
                 style={{ color: "#F4A833" }}
+                onClick={() => setDrawerOpen(false)}
               >
                 {user.name}
-              </span>
+              </NavLink>
               <button
                 onClick={() => {
                   setDrawerOpen(false);

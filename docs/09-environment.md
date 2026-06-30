@@ -22,6 +22,8 @@ cp server/.env.example server/.env
 | `JWT_SECRET` | **YES** | — | At least 64 characters. Used to sign and verify **access tokens** (15-minute expiry). Generate with `openssl rand -hex 32`. |
 | `JWT_REFRESH_SECRET` | **YES** | — | Must be **different** from `JWT_SECRET`. Signs **refresh tokens** (7-day expiry). Generate separately with `openssl rand -hex 32`. |
 | `OPENAI_API_KEY` | **YES** | — | Your OpenAI secret key (`sk-...`). Must have access to `gpt-4o-mini`. Get from [platform.openai.com](https://platform.openai.com). |
+| `OPENROUTESERVICE_API_KEY` | Optional | — | Enables real pedestrian routing for map walking directions. Without it, walking directions fall back to a direct line. |
+| `OPENROUTESERVICE_URL` | Optional | `https://api.openrouteservice.org` | Override only when using an ORS-compatible/self-hosted endpoint. |
 | `GOOGLE_CLIENT_ID` | For Google login | — | From Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client IDs |
 | `GOOGLE_CLIENT_SECRET` | For Google login | — | From the same Google Cloud Console credential entry |
 | `GOOGLE_CALLBACK_URL` | For Google login | — | Must **exactly** match the Authorized Redirect URI configured in Google Console. Dev value: `http://localhost:5000/api/auth/google/callback` |
@@ -50,6 +52,8 @@ MONGODB_URI       → server.js   (mongoose.connect)
 JWT_SECRET        → auth.service.js, auth.middleware.js
 JWT_REFRESH_SECRET → auth.service.js
 OPENAI_API_KEY    → ai.service.js (new OpenAI({ apiKey }))
+OPENROUTESERVICE_API_KEY → osrm.service.js (walking directions provider)
+OPENROUTESERVICE_URL → osrm.service.js (optional ORS base URL)
 GOOGLE_CLIENT_ID  → config/passport.js
 GOOGLE_CLIENT_SECRET → config/passport.js
 GOOGLE_CALLBACK_URL → config/passport.js

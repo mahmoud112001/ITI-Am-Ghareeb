@@ -840,6 +840,62 @@ describe("GET /api/routes/search", () => {
 
 // ── Stations ──────────────────────────────────────────────────────────────────
 
+describe("GET /api/routes/near-me", () => {
+  test("uses the nearest station even when it is a middle station", async () => {
+    await seedLegacyRoute({
+      routeId: "TEST-NEAREST-MIDDLE-01",
+      type: "microbus",
+      direction: "one_way",
+      nameAr: "Nearest Middle Route",
+      nameEn: "Nearest Middle Route",
+      origin: {
+        nameAr: "Far Start",
+        nameEn: "Far Start",
+        coords: { lat: 31.0, lng: 29.7 },
+      },
+      destination: {
+        nameAr: "Far End",
+        nameEn: "Far End",
+        coords: { lat: 31.5, lng: 30.2 },
+      },
+      stations: [
+        {
+          order: 1,
+          nameAr: "Far Start",
+          nameEn: "Far Start",
+          coords: { lat: 31.0, lng: 29.7 },
+        },
+        {
+          order: 2,
+          nameAr: "Middle Nearest Station",
+          nameEn: "Middle Nearest Station",
+          coords: { lat: 31.234, lng: 29.934 },
+        },
+        {
+          order: 3,
+          nameAr: "Far End",
+          nameEn: "Far End",
+          coords: { lat: 31.5, lng: 30.2 },
+        },
+      ],
+      fare: { min: 5, max: 10 },
+      verified: true,
+      isActive: true,
+    });
+
+    const res = await request(app)
+      .get("/api/routes/near-me")
+      .query({ lat: 31.2341, lng: 29.9341 });
+
+    expect(res.status).toBe(200);
+    const match = res.body.results.find((result) => result.route.routeId === "TEST-NEAREST-MIDDLE-01");
+    expect(match).toBeDefined();
+    expect(match.route.nearestStation.nameEn).toBe("Middle Nearest Station");
+    expect(match.route.distanceMeters).toBeLessThan(30);
+    expect(match.travelSegments[0].boardAt.nameEn).toBe("Middle Nearest Station");
+  });
+});
+
 describe("GET /api/routes/stations", () => {
   test("returns 200 with array of Arabic strings", async () => {
     const res = await request(app).get("/api/routes/stations");

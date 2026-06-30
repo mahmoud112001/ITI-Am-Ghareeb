@@ -11,7 +11,9 @@ const SearchPage    = lazy(() => import('./pages/SearchPage'))
 const MapPage       = lazy(() => import('./pages/MapPage'))
 const AIChatPage    = lazy(() => import('./pages/AIChatPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const ProfilePage   = lazy(() => import('./pages/ProfilePage'))
 const AdminPage     = lazy(() => import('./pages/AdminPage'))
+const AdminReviewsPage = lazy(() => import('./pages/AdminReviewsPage'))
 const LoginPage     = lazy(() => import('./pages/LoginPage'))
 const RegisterPage  = lazy(() => import('./pages/RegisterPage'))
 
@@ -75,6 +77,14 @@ export default function App() {
                   }
                 />
                 <Route
+                  path="/profile"
+                  element={
+                    <ProtectedRoute>
+                      <ProfilePage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
                   path="/dashboard"
                   element={
                     <ProtectedRoute>
@@ -84,6 +94,14 @@ export default function App() {
                 />
 
                 {/* Protected — admin only */}
+                <Route
+                  path="/admin/reviews"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminReviewsPage />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route
                   path="/admin"
                   element={

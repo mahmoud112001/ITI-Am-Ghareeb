@@ -1,5 +1,6 @@
 // src/pages/AdminPage.jsx
 import { useState, useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, useMapEvents, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
@@ -1355,9 +1356,18 @@ export default function AdminPage() {
 
         <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <h1 className="text-2xl font-black" style={{ color: '#1B2A4A' }}>{t.pageTitle}</h1>
-          <button onClick={() => setAddOpen(true)} className="rounded-xl px-5 py-2.5 text-sm font-bold hover:opacity-80" style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}>
-            {t.addRouteBtn}
-          </button>
+          <div className="flex gap-3 flex-wrap">
+            <Link
+              to="/admin/reviews"
+              className="rounded-xl px-5 py-2.5 text-sm font-bold hover:opacity-80"
+              style={{ backgroundColor: '#FFFFFF', color: '#1B2A4A', border: '1px solid #E5E7EB' }}
+            >
+              رسائل التقييمات
+            </Link>
+            <button onClick={() => setAddOpen(true)} className="rounded-xl px-5 py-2.5 text-sm font-bold hover:opacity-80" style={{ backgroundColor: '#F4A833', color: '#1B2A4A' }}>
+              {t.addRouteBtn}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

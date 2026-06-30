@@ -1,4 +1,10 @@
-const { Route, User, Rating, SearchHistory } = require("../models/index.js");
+const {
+  Route,
+  User,
+  Rating,
+  TravelPlanRating,
+  SearchHistory,
+} = require("../models/index.js");
 const {
   extractRouteFields,
   populateRouteGraph,
@@ -91,6 +97,41 @@ async function getRouteRatings(id) {
   const inaccurate = ratings.filter((r) => r.isAccurate === false);
 
   return { accurate, inaccurate, total: ratings.length };
+}
+
+async function getAllRatingMessages(limit = 100) {
+  const max = Math.min(parseInt(limit, 10) || 100, 200)
+  const [routeRatings, travelPlanRatings] = await Promise.all([
+    Rating.find({ comment: { $nin: [null, ''] } })
+      .populate('user', 'name email')
+      .populate('route', 'routeId nameAr nameEn localName type')
+      .sort({ createdAt: -1 })
+      .limit(max),
+    TravelPlanRating.find({ comment: { $nin: [null, ''] } })
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(max),
+  ])
+
+  return [...routeRatings.map((rating) => ({
+    _id: rating._id,
+    type: 'route',
+    user: rating.user,
+    route: rating.route,
+    isAccurate: rating.isAccurate,
+    comment: rating.comment,
+    createdAt: rating.createdAt,
+  })), ...travelPlanRatings.map((rating) => ({
+    _id: rating._id,
+    type: 'travelPlan',
+    user: rating.user,
+    travelPlanId: rating.travelPlanId,
+    routeIds: rating.routeIds,
+    transferCount: rating.transferCount,
+    isAccurate: rating.isAccurate,
+    comment: rating.comment,
+    createdAt: rating.createdAt,
+  }))].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, max)
 }
 
 async function createRoute(data) {
@@ -259,6 +300,7 @@ async function clearRoutePath(id) {
 module.exports = {
   getAllRoutes,
   getRouteRatings,
+  getAllRatingMessages,
   createRoute,
   updateRoute,
   softDeleteRoute,

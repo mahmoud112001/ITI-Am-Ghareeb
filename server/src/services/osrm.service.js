@@ -1,28 +1,78 @@
 // services/osrm.service.js
 // ---------------------------------------------------------------------------
-// Thin wrapper around the OSRM HTTP API.
-// Self-host OSRM with Egypt OSM data for production (see README).
-// Falls back to the public demo server for local development only.
+// Thin wrapper around routing APIs.
+// Uses OSRM for driving/transport route shapes and optional OpenRouteService
+// for walking paths. Keep secret provider keys on the server only.
 // ---------------------------------------------------------------------------
 
 const axios = require('axios')
 
 const OSRM_BASE_URL = process.env.OSRM_URL || 'http://router.project-osrm.org'
+const ORS_BASE_URL = process.env.OPENROUTESERVICE_URL || 'https://api.openrouteservice.org'
+const ORS_API_KEY = process.env.OPENROUTESERVICE_API_KEY
+const OSRM_PROFILES = {
+  car: 'driving',
+  driving: 'driving',
+  transport: 'driving',
+  walk: 'foot',
+  walking: 'foot',
+  foot: 'foot',
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Build the OSRM /route/v1/driving URL.
+ * Build the OSRM /route/v1/:profile URL.
  * OSRM expects coordinates as lng,lat — the opposite of Leaflet's lat,lng.
  */
-function buildOsrmUrl(coords) {
+function normalizeProfile(profile) {
+  return OSRM_PROFILES[String(profile || '').toLowerCase()] || 'driving'
+}
+
+function buildOsrmUrl(coords, profile = 'driving') {
   const coordString = coords.map((c) => `${c.lng},${c.lat}`).join(';')
+  const osrmProfile = normalizeProfile(profile)
   return (
-    `${OSRM_BASE_URL}/route/v1/driving/${coordString}` +
+    `${OSRM_BASE_URL}/route/v1/${osrmProfile}/${coordString}` +
     `?overview=full&geometries=geojson&steps=false`
   )
+}
+
+function isWalkingProfile(profile) {
+  return ['walk', 'walking', 'foot'].includes(String(profile || '').toLowerCase())
+}
+
+function decodeOrsGeometry(geometry) {
+  return (geometry?.coordinates || []).map(([lng, lat]) => ({ lat, lng }))
+}
+
+async function generateWalkingPath(coords) {
+  if (!ORS_API_KEY) {
+    return coords
+  }
+
+  try {
+    const response = await axios.post(
+      `${ORS_BASE_URL}/v2/directions/foot-walking/geojson`,
+      {
+        coordinates: coords.map((coord) => [coord.lng, coord.lat]),
+      },
+      {
+        headers: {
+          Authorization: ORS_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15_000,
+      },
+    )
+
+    const path = decodeOrsGeometry(response.data?.features?.[0]?.geometry)
+    return path.length >= 2 ? path : coords
+  } catch {
+    return coords
+  }
 }
 
 /**
@@ -117,7 +167,7 @@ function insertWaypointsByNearestSegment(points, waypoints) {
  *   Must be at least 2 valid, non-zero coordinates.
  * @returns {Promise<Array<{lat: number, lng: number}>>}
  */
-async function generatePath(coords) {
+async function generatePath(coords, options = {}) {
   const cleanCoords = Array.isArray(coords)
     ? coords.filter(isValidCoord)
     : []
@@ -137,7 +187,11 @@ async function generatePath(coords) {
     )
   }
 
-  const url = buildOsrmUrl(cleanCoords)
+  if (isWalkingProfile(options.profile)) {
+    return generateWalkingPath(cleanCoords)
+  }
+
+  const url = buildOsrmUrl(cleanCoords, options.profile)
 
   let response
   try {

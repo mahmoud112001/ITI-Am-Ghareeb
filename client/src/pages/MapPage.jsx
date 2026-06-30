@@ -77,6 +77,11 @@ const TRAVEL_SEGMENT_PALETTES = [
   },
 ]
 
+const STATION_DIRECTIONS_MODES = [
+  { value: 'walk', labelKey: 'nearestDirectionsWalk' },
+  { value: 'transport', labelKey: 'nearestDirectionsTransport' },
+]
+
 function ordinalLabel(index) {
   const labels = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة']
   return labels[index] || `${index + 1}`
@@ -358,6 +363,52 @@ function RouteMapStyles() {
           display: none;
         }
 
+        .am-ghareeb-user-location {
+          background: transparent;
+          border: 0;
+        }
+
+        .am-ghareeb-user-dot {
+          position: relative;
+          display: inline-flex;
+          width: 22px;
+          height: 22px;
+          align-items: center;
+          justify-content: center;
+          border-radius: 9999px;
+          background: #2563EB;
+          border: 3px solid #FFFFFF;
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22), 0 6px 14px rgba(15, 23, 42, 0.28);
+        }
+
+        .am-ghareeb-user-dot::after {
+          content: "";
+          width: 7px;
+          height: 7px;
+          border-radius: 9999px;
+          background: #FFFFFF;
+        }
+
+        .am-ghareeb-user-pulse {
+          position: absolute;
+          inset: -8px;
+          border-radius: 9999px;
+          background: rgba(37, 99, 235, 0.22);
+          animation: am-ghareeb-user-pulse 1.8s ease-out infinite;
+          z-index: -1;
+        }
+
+        @keyframes am-ghareeb-user-pulse {
+          0% {
+            transform: scale(0.65);
+            opacity: 0.9;
+          }
+          100% {
+            transform: scale(1.75);
+            opacity: 0;
+          }
+        }
+
         .route-map-badge-icon {
           background: transparent;
           border: 0;
@@ -584,6 +635,43 @@ function getStationById(routeState, stationId) {
   )
 }
 
+function findNearestStationToCoords(stations = [], coords) {
+  if (!coords) return null
+
+  const target = { coords: { lat: coords[0], lng: coords[1] } }
+  let nearestStation = null
+  let nearestScore = Number.POSITIVE_INFINITY
+
+  stations.forEach((station) => {
+    if (!station?.coords?.lat || !station?.coords?.lng) return
+    const score = distanceSquared(station, target)
+    if (score < nearestScore) {
+      nearestScore = score
+      nearestStation = station
+    }
+  })
+
+  return nearestStation
+}
+
+function anchorPathToEndpoints(pathCoords, startCoords, endCoords) {
+  if (!startCoords || !endCoords) return []
+
+  const anchoredPath = Array.isArray(pathCoords) && pathCoords.length >= 2
+    ? [...pathCoords]
+    : []
+  const startPoint = [startCoords.lat, startCoords.lng]
+  const endPoint = [endCoords.lat, endCoords.lng]
+
+  if (anchoredPath.length === 0) {
+    return [startPoint, endPoint]
+  }
+
+  anchoredPath[0] = startPoint
+  anchoredPath[anchoredPath.length - 1] = endPoint
+  return anchoredPath
+}
+
 function isStationRelevant(routeState, stationIndex) {
   if (!routeState) return false
 
@@ -790,15 +878,30 @@ export default function MapPage() {
   const [nearestRoute, setNearestRoute] = useState(null)
   const [tracking, setTracking] = useState(false)
   const [approachPathCoords, setApproachPathCoords] = useState([])
+  const [nearestDirectionsCoords, setNearestDirectionsCoords] = useState([])
+  const [nearestDirectionsLoading, setNearestDirectionsLoading] = useState(false)
+  const [stationDirectionsMode, setStationDirectionsMode] = useState('walk')
 
   async function refreshNearestRoute(coordsArr) {
     try {
       const res = await api.get('/api/routes/near-me', { params: { lat: coordsArr[0], lng: coordsArr[1] } })
       const nearest = res.data.results?.[0]?.route || null
       setNearestRoute(nearest)
+      return nearest
     } catch {
       setNearestRoute(null)
+      return null
     }
+  }
+
+  function getCurrentPosition() {
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 15000,
+      })
+    })
   }
 
   useEffect(() => {
@@ -910,20 +1013,26 @@ export default function MapPage() {
 
   const queryOriginCoords = parseQueryCoords(searchParams, 'origin')
   const firstRouteState = hydratedRouteStates[0] || null
+  const nearestDisplayedRouteStation = firstRouteState && userLocation
+    ? findNearestStationToCoords(firstRouteState.validStations, userLocation)
+    : null
   const approachBoardStation = firstRouteState
-    ? getStationById(firstRouteState, firstRouteState.matchedOriginId) || firstRouteState.route?.origin
+    ? nearestDisplayedRouteStation || getStationById(firstRouteState, firstRouteState.matchedOriginId) || firstRouteState.route?.origin
     : null
   const approachBoardCoords = normalizeLatLng(approachBoardStation?.coords)
+  const approachOriginCoords = userLocation
+    ? { lat: userLocation[0], lng: userLocation[1] }
+    : queryOriginCoords
 
   useEffect(() => {
-    const fallbackCoords = queryOriginCoords && approachBoardCoords
+    const fallbackCoords = approachOriginCoords && approachBoardCoords
       ? [
-          [queryOriginCoords.lat, queryOriginCoords.lng],
+          [approachOriginCoords.lat, approachOriginCoords.lng],
           [approachBoardCoords.lat, approachBoardCoords.lng],
         ]
       : []
 
-    if (!queryOriginCoords || !approachBoardCoords) {
+    if (!approachOriginCoords || !approachBoardCoords) {
       setApproachPathCoords([])
       return
     }
@@ -934,10 +1043,11 @@ export default function MapPage() {
     api
       .get('/api/routes/path-between', {
         params: {
-          fromLat: queryOriginCoords.lat,
-          fromLng: queryOriginCoords.lng,
+          fromLat: approachOriginCoords.lat,
+          fromLng: approachOriginCoords.lng,
           toLat: approachBoardCoords.lat,
           toLng: approachBoardCoords.lng,
+          mode: stationDirectionsMode,
         },
       })
       .then((response) => {
@@ -946,8 +1056,9 @@ export default function MapPage() {
           .map((point) => normalizeLatLng(point))
           .filter(Boolean)
           .map((point) => [point.lat, point.lng])
+        const anchoredPathCoords = anchorPathToEndpoints(pathCoords, approachOriginCoords, approachBoardCoords)
 
-        setApproachPathCoords(pathCoords.length >= 2 ? pathCoords : fallbackCoords)
+        setApproachPathCoords(anchoredPathCoords.length >= 2 ? anchoredPathCoords : fallbackCoords)
       })
       .catch(() => {
         if (!cancelled) {
@@ -959,13 +1070,16 @@ export default function MapPage() {
       cancelled = true
     }
   }, [
-    queryOriginCoords?.lat,
-    queryOriginCoords?.lng,
+    approachOriginCoords?.lat,
+    approachOriginCoords?.lng,
     approachBoardCoords?.lat,
     approachBoardCoords?.lng,
+    stationDirectionsMode,
   ])
 
   const nearestValidStations = nearestRoute ? (nearestRoute.stations || []).filter((s) => s.coords?.lat && s.coords?.lng) : []
+  const nearestStation = nearestRoute?.nearestStation || null
+  const nearestStationCoords = normalizeLatLng(nearestStation?.coords)
   const nearestPathCoords = (!nearestRoute?.pathStale ? nearestRoute?.path || [] : [])
     .filter((point) => point?.lat && point?.lng)
     .map((point) => [point.lat, point.lng])
@@ -976,14 +1090,46 @@ export default function MapPage() {
     ? nearestPathCoords
     : nearestGeometryCoords
 
+  useEffect(() => {
+    setNearestDirectionsCoords([])
+  }, [
+    nearestStationCoords?.lat,
+    nearestStationCoords?.lng,
+    approachBoardCoords?.lat,
+    approachBoardCoords?.lng,
+    stationDirectionsMode,
+  ])
+
   const fitCoords = [
+    ...(userLocation ? [userLocation] : []),
     ...approachPathCoords,
+    ...nearestDirectionsCoords,
     ...hydratedRouteStates.flatMap((routeState) => routeState.polylineCoords || []),
     ...transferSteps.flatMap((step) => step.coords || []),
   ]
 
   const isLoading = travelSegmentRouteQueries.some((query) => query.isLoading || query.isPending)
   const visibleRouteIds = new Set(hydratedRouteStates.map((routeState) => routeState.route.routeId))
+  const routeLegendPalette = hydratedRouteStates[0]?.palette || getTravelSegmentPalette(0)
+  const hasCurrentLocationMarker = Boolean(userLocation || queryOriginCoords)
+  const hasPickupMarker = hydratedRouteStates.some((routeState) => Boolean(routeState.matchedOriginId))
+  const hasDropoffMarker = hydratedRouteStates.some((routeState) => Boolean(routeState.matchedDestinationId))
+  const hasRouteLine = hydratedRouteStates.some((routeState) =>
+    routeState.polylineCoords?.length >= 2 ||
+    routeState.highlightGeometryCoords?.length >= 2 ||
+    routeState.mutedLeadingCoords?.length >= 2 ||
+    routeState.mutedTrailingCoords?.length >= 2
+  )
+  const hasApproachRouteLine = approachPathCoords.length >= 2 || nearestDirectionsCoords.length >= 2
+  const hasNearestStationMarker = hasTravelSegmentSelection
+    ? Boolean(nearestDisplayedRouteStation && approachBoardCoords)
+    : Boolean(nearestStation)
+  const hasNearestRouteLine = Boolean(
+    nearestRoute &&
+    !hasTravelSegmentSelection &&
+    !visibleRouteIds.has(nearestRoute.routeId) &&
+    nearestPolylineCoords.length >= 2
+  )
 
   function handleLocate() {
     setLocError('')
@@ -1018,6 +1164,123 @@ export default function MapPage() {
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
     )
+  }
+
+  useEffect(() => {
+    if (!navigator.geolocation || userLocation) return
+
+    let cancelled = false
+    setLocating(true)
+
+    getCurrentPosition()
+      .then(async (pos) => {
+        if (cancelled) return
+        const coordsArr = [pos.coords.latitude, pos.coords.longitude]
+        setUserLocation(coordsArr)
+        setAccuracy(pos.coords.accuracy)
+        setLocError('')
+        await refreshNearestRoute(coordsArr)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        switch (err.code) {
+          case 1:
+            setLocError(t.geoDenied)
+            break
+          case 2:
+            setLocError(t.geoUnavailable)
+            break
+          case 3:
+            setLocError(t.geoTimeout)
+            break
+          default:
+            setLocError(t.geoFailed)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLocating(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function handleNearestStationDirections() {
+    setLocError('')
+    if (!navigator.geolocation) {
+      setLocError(t.geoNotSupported)
+      return
+    }
+
+    setNearestDirectionsLoading(true)
+    try {
+      let coordsArr = userLocation
+
+      if (!coordsArr) {
+        const pos = await getCurrentPosition()
+        coordsArr = [pos.coords.latitude, pos.coords.longitude]
+        setUserLocation(coordsArr)
+        setAccuracy(pos.coords.accuracy)
+      }
+
+      let targetStation = firstRouteState
+        ? findNearestStationToCoords(firstRouteState.validStations, coordsArr)
+        : null
+
+      if (!targetStation) {
+        const route = await refreshNearestRoute(coordsArr)
+        targetStation = route?.nearestStation || null
+      }
+
+      const stationCoords = normalizeLatLng(targetStation?.coords)
+      if (!stationCoords) {
+        setLocError(t.noNearestStation)
+        setNearestDirectionsCoords([])
+        return
+      }
+
+      const fallbackCoords = [
+        coordsArr,
+        [stationCoords.lat, stationCoords.lng],
+      ]
+
+      const response = await api.get('/api/routes/path-between', {
+        params: {
+          fromLat: coordsArr[0],
+          fromLng: coordsArr[1],
+          toLat: stationCoords.lat,
+          toLng: stationCoords.lng,
+          mode: stationDirectionsMode,
+        },
+      })
+      const pathCoords = (response.data?.path || [])
+        .map((point) => normalizeLatLng(point))
+        .filter(Boolean)
+        .map((point) => [point.lat, point.lng])
+      const anchoredPathCoords = anchorPathToEndpoints(
+        pathCoords,
+        { lat: coordsArr[0], lng: coordsArr[1] },
+        stationCoords,
+      )
+
+      setNearestDirectionsCoords(anchoredPathCoords.length >= 2 ? anchoredPathCoords : fallbackCoords)
+    } catch (err) {
+      if (err?.code === 1) {
+        setLocError(t.geoDenied)
+      } else if (err?.code === 2) {
+        setLocError(t.geoUnavailable)
+      } else if (err?.code === 3) {
+        setLocError(t.geoTimeout)
+      } else {
+        setLocError(t.nearestDirectionsFailed)
+      }
+      setNearestDirectionsCoords([])
+    } finally {
+      setNearestDirectionsLoading(false)
+    }
   }
 
   return (
@@ -1129,10 +1392,21 @@ export default function MapPage() {
             />
           )}
 
+          {nearestDirectionsCoords.length >= 2 && (
+            <RoutePolyline
+              positions={nearestDirectionsCoords}
+              palette={{ casing: '#047857', main: '#6EE7B7' }}
+              weight={4}
+              opacity={0.92}
+              dashed
+            />
+          )}
+
           {queryOriginCoords && (
             <Marker
               position={[queryOriginCoords.lat, queryOriginCoords.lng]}
               icon={userLocationIcon}
+              zIndexOffset={1000}
             >
               <Popup>
                 <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl', textAlign: 'right' }}>
@@ -1287,7 +1561,30 @@ export default function MapPage() {
             ) : null,
           )}
 
-          {nearestRoute && !visibleRouteIds.has(nearestRoute.routeId) && nearestPolylineCoords.length > 0 && (
+          {hasTravelSegmentSelection && nearestDisplayedRouteStation && approachBoardCoords && (
+            <CircleMarker
+              center={[approachBoardCoords.lat, approachBoardCoords.lng]}
+              radius={12}
+              pathOptions={{
+                fillColor: '#D1FAE5',
+                color: '#047857',
+                weight: 3,
+                fillOpacity: 0.92,
+              }}
+            >
+              <Popup>
+                <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl', textAlign: 'right', minWidth: 120 }}>
+                  <strong style={{ color: '#1B2A4A', display: 'block' }}>{nearestDisplayedRouteStation.nameAr}</strong>
+                  <span style={{ color: '#6B7280', fontSize: 12 }}>{nearestDisplayedRouteStation.nameEn}</span>
+                  <span style={{ color: '#047857', fontSize: 12, display: 'block', marginTop: 4 }}>
+                    {t.nearestStationPopup}
+                  </span>
+                </div>
+              </Popup>
+            </CircleMarker>
+          )}
+
+          {nearestRoute && !hasTravelSegmentSelection && !visibleRouteIds.has(nearestRoute.routeId) && nearestPolylineCoords.length > 0 && (
             <>
               {nearestPolylineCoords.length >= 2 && (
                 <RoutePolyline
@@ -1300,23 +1597,32 @@ export default function MapPage() {
               )}
               {nearestValidStations.map((s, i) => {
                 const isEndpoint = i === 0 || i === nearestValidStations.length - 1
+                const isNearestStation =
+                  nearestStation?._id && s?._id
+                    ? String(nearestStation._id) === String(s._id)
+                    : nearestStation?.nameAr === s?.nameAr
                 return (
                   <CircleMarker
                     key={`near-${i}`}
                     center={[s.coords.lat, s.coords.lng]}
-                    radius={isEndpoint ? 10 : 6}
+                    radius={isNearestStation ? 12 : isEndpoint ? 10 : 6}
                     pathOptions={{
-                      fillColor: '#FEE2E2',
-                      color: '#DC2626',
-                      weight: 2,
-                      dashArray: '6 4',
-                      fillOpacity: 0.9,
+                      fillColor: isNearestStation ? '#D1FAE5' : '#FEE2E2',
+                      color: isNearestStation ? '#047857' : '#DC2626',
+                      weight: isNearestStation ? 3 : 2,
+                      dashArray: isNearestStation ? undefined : '6 4',
+                      fillOpacity: 0.92,
                     }}
                   >
                     <Popup>
                       <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl', textAlign: 'right', minWidth: 120 }}>
                         <strong style={{ color: '#1B2A4A', display: 'block' }}>{s.nameAr}</strong>
                         <span style={{ color: '#6B7280', fontSize: 12 }}>{s.nameEn}</span>
+                        {isNearestStation ? (
+                          <span style={{ color: '#047857', fontSize: 12, display: 'block', marginTop: 4 }}>
+                            {t.nearestStationPopup}
+                          </span>
+                        ) : null}
                       </div>
                     </Popup>
                   </CircleMarker>
@@ -1341,7 +1647,7 @@ export default function MapPage() {
                   }}
                 />
               ) : null}
-              <Marker position={userLocation} icon={userLocationIcon}>
+              <Marker position={userLocation} icon={userLocationIcon} zIndexOffset={1000}>
                 <Popup>
                   <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl', textAlign: 'right', minWidth: 140 }}>
                     <strong style={{ color: '#1B2A4A', display: 'block' }}>{t.myLocationPopup}</strong>
@@ -1407,42 +1713,68 @@ export default function MapPage() {
               {t.legendTitle}
             </p>
             <div className="space-y-2 text-xs" style={{ color: '#475569' }}>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: '#F4A833' }} />
-                <span>{t.legendOrigin}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: '#1B2A4A' }} />
-                <span>{t.legendDestination}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: '#DC2626' }} />
-                <span>{t.legendNearest}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-1.5 w-8 rounded-full" style={{ backgroundColor: '#64748B' }} />
-                <span>{t.legendRoute}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className="h-1.5 w-8 rounded-full"
-                  style={{
-                    backgroundImage: 'repeating-linear-gradient(to right, #6EE7B7 0 8px, transparent 8px 12px)',
-                    backgroundColor: '#047857',
-                  }}
-                />
-                <span>{t.legendApproachRoute}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className="h-1.5 w-8 rounded-full"
-                  style={{
-                    backgroundImage: 'repeating-linear-gradient(to right, #FCA5A5 0 8px, transparent 8px 12px)',
-                    backgroundColor: '#B91C1C',
-                  }}
-                />
-                <span>{t.legendNearestRoute}</span>
-              </div>
+              {hasCurrentLocationMarker && (
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-3 w-3 rounded-full"
+                    style={{ backgroundColor: '#2563EB', boxShadow: '0 0 0 4px rgba(147,197,253,0.45)' }}
+                  />
+                  <span>{t.legendOrigin}</span>
+                </div>
+              )}
+              {hasPickupMarker && (
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: '#F4A833', border: '2px solid #FFF7E8' }} />
+                  <span>{t.legendPickup}</span>
+                </div>
+              )}
+              {hasDropoffMarker && (
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: '#1B2A4A', border: '2px solid #EDF5FF' }} />
+                  <span>{t.legendDropoff}</span>
+                </div>
+              )}
+              {hasNearestStationMarker && (
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: '#047857', border: '2px solid #D1FAE5' }} />
+                  <span>{t.legendNearest}</span>
+                </div>
+              )}
+              {hasRouteLine && (
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-1.5 w-8 rounded-full"
+                    style={{
+                      background: `linear-gradient(to right, ${routeLegendPalette.casing}, ${routeLegendPalette.main})`,
+                    }}
+                  />
+                  <span>{t.legendRoute}</span>
+                </div>
+              )}
+              {hasApproachRouteLine && (
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-1.5 w-8 rounded-full"
+                    style={{
+                      backgroundImage: 'repeating-linear-gradient(to right, #6EE7B7 0 8px, transparent 8px 12px)',
+                      backgroundColor: '#047857',
+                    }}
+                  />
+                  <span>{t.legendApproachRoute}</span>
+                </div>
+              )}
+              {hasNearestRouteLine && (
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-1.5 w-8 rounded-full"
+                    style={{
+                      backgroundImage: 'repeating-linear-gradient(to right, #FCA5A5 0 8px, transparent 8px 12px)',
+                      backgroundColor: '#B91C1C',
+                    }}
+                  />
+                  <span>{t.legendNearestRoute}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1463,6 +1795,44 @@ export default function MapPage() {
           className="absolute bottom-6 left-4 flex flex-col gap-3"
           style={{ zIndex: 1000 }}
         >
+          <div
+            className="rounded-xl border p-1 shadow-lg flex gap-1"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#E5E7EB', fontFamily: 'Cairo, sans-serif' }}
+          >
+            {STATION_DIRECTIONS_MODES.map((mode) => {
+              const isActive = stationDirectionsMode === mode.value
+              return (
+                <button
+                  key={mode.value}
+                  type="button"
+                  onClick={() => setStationDirectionsMode(mode.value)}
+                  className="rounded-lg px-3 py-2 text-xs font-bold transition-colors"
+                  style={{
+                    backgroundColor: isActive ? '#047857' : 'transparent',
+                    color: isActive ? '#FFFFFF' : '#1B2A4A',
+                  }}
+                >
+                  {t[mode.labelKey]}
+                </button>
+              )
+            })}
+          </div>
+
+          <button
+            onClick={handleNearestStationDirections}
+            disabled={nearestDirectionsLoading}
+            className="rounded-xl px-4 py-2.5 text-sm font-bold shadow-lg flex items-center gap-2 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+            style={{ backgroundColor: '#047857', color: 'white', fontFamily: 'Cairo, sans-serif' }}
+          >
+            {nearestDirectionsLoading ? (
+              <span
+                className="inline-block h-4 w-4 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'rgba(255,255,255,0.45)', borderTopColor: '#FFFFFF' }}
+              />
+            ) : null}
+            {nearestDirectionsLoading ? t.nearestDirectionsLoading : t.nearestDirectionsBtn}
+          </button>
+
           <button
             onClick={handleLocate}
             disabled={locating}

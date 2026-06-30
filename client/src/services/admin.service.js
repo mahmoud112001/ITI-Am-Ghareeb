@@ -21,6 +21,9 @@ export const getAdminStats = () =>
 export const getAdminRoutes = (page = 1, limit = 10) =>
   api.get('/api/admin/routes', { params: { page, limit } }).then((r) => r.data)
 
+export const getAdminRatingMessages = (limit = 50) =>
+  api.get('/api/admin/routes/rating-messages', { params: { limit } }).then((r) => r.data)
+
 /**
  * POST /api/admin/routes
  * Body: { routeId, type, fare: { min, max }, operatingHours: { start, end }, stops[], geometry }

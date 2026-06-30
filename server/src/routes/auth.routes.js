@@ -28,13 +28,32 @@ const loginSchema = Joi.object({
   password: Joi.string().required(),
 })
 
+const verifyEmailSchema = Joi.object({
+  otp: Joi.string().length(6).pattern(/^\d+$/).required(),
+})
+
+const changePasswordSchema = Joi.object({
+  currentPassword: Joi.string().required(),
+  newPassword: Joi.string()
+    .min(8)
+    .pattern(/^(?=.*[A-Z])(?=.*\d)/)
+    .required()
+    .messages({
+      'string.pattern.base': 'كلمة المرور يجب أن تحتوي على حرف كبير ورقم واحد على الأقل',
+    }),
+})
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 router.post('/register', authLimiter, validate(registerSchema), authController.register)
 router.post('/login', authLimiter, validate(loginSchema), authController.login)
 router.post('/refresh', authController.refresh)
+router.post('/verify-email', protect, validate(verifyEmailSchema), authController.verifyEmail)
+router.post('/resend-verification', protect, authLimiter, authController.resendVerificationOtp)
+router.patch('/password', protect, validate(changePasswordSchema), authController.changePassword)
 router.post('/logout', protect, authController.logout)
 router.get('/me', protect, authController.getMe)
+router.get('/me/ratings', protect, authController.getMyRatings)
 
 // ── Google OAuth ──────────────────────────────────────────────────────────────
 

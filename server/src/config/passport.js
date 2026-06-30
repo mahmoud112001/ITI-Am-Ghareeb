@@ -37,10 +37,11 @@ module.exports = (passport) => {
             if (user) {
               // Link Google to existing email account
               user.googleId = googleId
+              user.emailVerified = true
               await user.save()
             } else {
               // 3. Brand-new user — create one (no password hash for OAuth users)
-              user = await User.create({ name, email, googleId, passwordHash: null })
+              user = await User.create({ name, email, googleId, passwordHash: null, emailVerified: true })
             }
           }
 

@@ -198,7 +198,7 @@ const getNearestRoutes = async (req, res, next) => {
 
 /**
  * getPathBetweenPoints — GET /api/routes/path-between
- * Returns an OSRM road-following line between two arbitrary coordinates.
+ * Returns a provider-backed path between two arbitrary coordinates.
  */
 const getPathBetweenPoints = async (req, res, next) => {
   try {
@@ -211,7 +211,9 @@ const getPathBetweenPoints = async (req, res, next) => {
         .json({ success: false, message: "Invalid from/to coordinates" });
     }
 
-    const path = await osrmService.generatePath([from, to]);
+    const path = await osrmService.generatePath([from, to], {
+      profile: req.query.mode || req.query.profile,
+    });
     res.status(200).json({ success: true, path });
   } catch (err) {
     next(err);

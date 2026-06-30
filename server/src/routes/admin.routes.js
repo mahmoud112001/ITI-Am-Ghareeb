@@ -154,10 +154,20 @@ const getRouteRatings = async (req, res, next) => {
   }
 }
 
+const getRatingMessages = async (req, res, next) => {
+  try {
+    const messages = await adminService.getAllRatingMessages(req.query.limit)
+    res.status(200).json({ success: true, messages })
+  } catch (err) {
+    next(err)
+  }
+}
+
 const router = express.Router()
 
 router.use(protect, requireAdmin)
 router.get('/', listRoutes)
+router.get('/rating-messages', getRatingMessages)
 router.post('/', validate(routeSchema), createRoute)
 router.post('/:id/generate-path', generatePath)
 router.get('/:id/ratings', getRouteRatings)

@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getAdminStats,
   getAdminRoutes,
+  getAdminRatingMessages,
   createRoute,
   updateRoute,
   restoreRoute,
@@ -20,6 +21,7 @@ import {
 export const ADMIN_KEYS = {
   stats: ['admin-stats'],
   routes: (page) => ['admin-routes', page],
+  ratingMessages: ['admin-rating-messages'],
 }
 
 // ── useAdminStats ─────────────────────────────────────────────────────────────
@@ -138,5 +140,12 @@ export function useClearRoutePath() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-routes'] })
     },
+  })
+}
+
+export function useAdminRatingMessages(limit = 50) {
+  return useQuery({
+    queryKey: [...ADMIN_KEYS.ratingMessages, limit],
+    queryFn: () => getAdminRatingMessages(limit),
   })
 }

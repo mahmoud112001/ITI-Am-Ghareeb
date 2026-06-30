@@ -78,6 +78,22 @@ export function AuthProvider({ children }) {
     return data.user
   }
 
+  async function verifyEmail(otp) {
+    const { data } = await api.post('/api/auth/verify-email', { otp })
+    setUser(data.user)
+    return data
+  }
+
+  async function resendVerificationOtp() {
+    const { data } = await api.post('/api/auth/resend-verification')
+    return data
+  }
+
+  async function changePassword(currentPassword, newPassword) {
+    const { data } = await api.patch('/api/auth/password', { currentPassword, newPassword })
+    return data
+  }
+
   // ── logout ────────────────────────────────────────────────────────────────
   async function logout() {
     try {
@@ -101,6 +117,9 @@ export function AuthProvider({ children }) {
     login,
     loginWithGoogle,
     register,
+    verifyEmail,
+    resendVerificationOtp,
+    changePassword,
     logout,
     updateUser,
   }

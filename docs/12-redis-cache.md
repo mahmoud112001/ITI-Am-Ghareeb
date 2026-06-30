@@ -19,6 +19,8 @@ This project uses Redis as a lightweight cache layer for frequently requested ro
 - Environment variable:
   - REDIS_URL=redis://localhost:6379
 
+Redis is optional in local development. If `REDIS_URL` is not set, the server skips Redis and the cache helpers safely fall back to MongoDB reads.
+
 ### Local development
 
 If Redis is installed locally, it can be started with:

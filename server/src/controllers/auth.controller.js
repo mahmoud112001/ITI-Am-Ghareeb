@@ -39,6 +39,46 @@ const refresh = async (req, res, next) => {
   }
 }
 
+const verifyEmail = async (req, res, next) => {
+  try {
+    const result = await authService.verifyEmail(req.user.userId, req.body.otp)
+    res.status(200).json({ success: true, ...result })
+  } catch (err) {
+    next(err)
+  }
+}
+
+const resendVerificationOtp = async (req, res, next) => {
+  try {
+    const result = await authService.resendVerificationOtp(req.user.userId)
+    res.status(200).json({ success: true, ...result })
+  } catch (err) {
+    next(err)
+  }
+}
+
+const changePassword = async (req, res, next) => {
+  try {
+    const result = await authService.changePassword(
+      req.user.userId,
+      req.body.currentPassword,
+      req.body.newPassword,
+    )
+    res.status(200).json({ success: true, ...result })
+  } catch (err) {
+    next(err)
+  }
+}
+
+const getMyRatings = async (req, res, next) => {
+  try {
+    const ratings = await authService.getUserRatings(req.user.userId, req.query.limit)
+    res.status(200).json({ success: true, ratings })
+  } catch (err) {
+    next(err)
+  }
+}
+
 /**
  * logout — POST /api/auth/logout (protected)
  */
@@ -78,4 +118,15 @@ const googleCallback = async (req, res, next) => {
   }
 }
 
-module.exports = { register, login, refresh, logout, getMe, googleCallback }
+module.exports = {
+  register,
+  login,
+  refresh,
+  verifyEmail,
+  resendVerificationOtp,
+  changePassword,
+  getMyRatings,
+  logout,
+  getMe,
+  googleCallback,
+}

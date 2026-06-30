@@ -42,6 +42,18 @@ const UserSchema = new Schema(
       type: String,
       default: null,
     },
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerificationOtp: {
+      type: String,
+      default: null,
+    },
+    emailVerificationOtpExpires: {
+      type: Date,
+      default: null,
+    },
     savedRoutes: [
       {
         type: Schema.Types.ObjectId,

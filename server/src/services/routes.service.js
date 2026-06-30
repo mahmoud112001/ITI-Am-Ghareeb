@@ -6,7 +6,6 @@ const {
   User,
 } = require("../models/index.js");
 const {
-  geometryToPointSummaries,
   hasMeaningfulCoords,
   normalizeSearchText,
   populateRouteGraph,
@@ -69,18 +68,30 @@ function canDropoff(stop) {
   return stop?.allowDropoff !== false;
 }
 
-function getNearestMapPointDistance(route, userLocation) {
-  const mapPoints =
-    route.geometryPoints || geometryToPointSummaries(route.geometry) || [];
+function getNearestRouteStation(route, userLocation) {
+  const stations = Array.isArray(route?.stations)
+    ? route.stations
+    : Array.isArray(route?.stops)
+      ? route.stops
+      : [];
   let minDistance = Number.POSITIVE_INFINITY;
+  let nearestStation = null;
 
-  for (const point of mapPoints) {
-    if (!hasMeaningfulCoords(point.coords)) continue;
-    const dist = distanceMeters(userLocation, point.coords);
-    if (dist < minDistance) minDistance = dist;
+  for (const station of stations) {
+    if (!hasMeaningfulCoords(station?.coords)) continue;
+    const dist = distanceMeters(userLocation, station.coords);
+    if (dist < minDistance) {
+      minDistance = dist;
+      nearestStation = station;
+    }
   }
 
-  return Number.isFinite(minDistance) ? minDistance : null;
+  if (!nearestStation || !Number.isFinite(minDistance)) return null;
+
+  return {
+    station: nearestStation,
+    distanceMeters: minDistance,
+  };
 }
 
 async function findMatchingLocations(query) {
@@ -785,15 +796,13 @@ async function findNearestRoutes(userCoords, userId = null) {
     routes
       .map((route) => {
         const publicRoute = toPublicRoute(route);
-        const nearestDistance = getNearestMapPointDistance(
-          publicRoute,
-          userCoords,
-        );
-        if (nearestDistance == null) return null;
+        const nearestStationMatch = getNearestRouteStation(publicRoute, userCoords);
+        if (!nearestStationMatch) return null;
         return {
           route,
           publicRoute,
-          distanceMeters: nearestDistance,
+          nearestStation: nearestStationMatch.station,
+          distanceMeters: nearestStationMatch.distanceMeters,
         };
       })
       .filter(Boolean)
@@ -804,6 +813,7 @@ async function findNearestRoutes(userCoords, userId = null) {
         const route = {
           ...item.publicRoute,
           distanceMeters: item.distanceMeters,
+          nearestStation: item.nearestStation,
         };
 
         return {
@@ -815,7 +825,7 @@ async function findNearestRoutes(userCoords, userId = null) {
             {
               route,
               accuracyStats,
-              boardAt: route.origin,
+              boardAt: item.nearestStation,
               alightAt: route.destination,
             },
           ],
@@ -850,8 +860,19 @@ async function getStations() {
   // If not found in Redis
   console.log("📦 Stations from MongoDB");
 
-  const stations = await Route.distinct("stations.nameAr");
-  stations.sort((a, b) => a.localeCompare(b, "ar"));
+  const routes = await populateRouteGraph(Route.find({ isActive: true }));
+  const stationSet = new Set();
+
+  routes.forEach((route) => {
+    const publicRoute = toPublicRoute(route);
+    (publicRoute.stations || []).forEach((station) => {
+      if (station?.nameAr) {
+        stationSet.add(station.nameAr);
+      }
+    });
+  });
+
+  const stations = [...stationSet].sort((a, b) => a.localeCompare(b, "ar"));
 
   // Save in Redis for 1 hour
   await setCache(cacheKey, stations, 3600);

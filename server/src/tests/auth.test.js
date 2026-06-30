@@ -143,6 +143,47 @@ describe('GET /api/auth/me', () => {
   })
 })
 
+describe('Email verification and password change', () => {
+  test('registered user can verify email with OTP', async () => {
+    const reg = await registerUser()
+    const { accessToken, otp } = reg.body
+
+    const res = await request(app)
+      .post('/api/auth/verify-email')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ otp })
+
+    expect(res.status).toBe(200)
+    expect(res.body.user.emailVerified).toBe(true)
+  })
+
+  test('user can resend verification OTP', async () => {
+    const reg = await registerUser()
+
+    const res = await request(app)
+      .post('/api/auth/resend-verification')
+      .set('Authorization', `Bearer ${reg.body.accessToken}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.otp).toHaveLength(6)
+  })
+
+  test('user can change password and login with the new one', async () => {
+    const reg = await registerUser()
+
+    const change = await request(app)
+      .patch('/api/auth/password')
+      .set('Authorization', `Bearer ${reg.body.accessToken}`)
+      .send({ currentPassword: validUser.password, newPassword: 'NewSecret123' })
+
+    expect(change.status).toBe(200)
+
+    const login = await loginUser(validUser.email, 'NewSecret123')
+    expect(login.status).toBe(200)
+    expect(login.body.accessToken).toBeDefined()
+  })
+})
+
 // ── Logout ────────────────────────────────────────────────────────────────────
 
 describe('POST /api/auth/logout', () => {
