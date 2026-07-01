@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQueries } from '@tanstack/react-query'
-import { MapContainer, TileLayer, Popup, Polyline, CircleMarker, Marker, Circle, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Popup, Polyline, CircleMarker, Marker, useMap } from 'react-leaflet'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ArrowDown, ArrowRightLeft, ArrowUp, Flag, Play } from 'lucide-react'
 import L from 'leaflet'
@@ -24,6 +24,18 @@ const userLocationIcon = L.divIcon({
   html: '<span class="am-ghareeb-user-dot"><span class="am-ghareeb-user-pulse"></span></span>',
   iconSize: [22, 22],
   iconAnchor: [11, 11],
+})
+
+const nearestStationIcon = L.divIcon({
+  className: 'am-ghareeb-nearest-station',
+  html: `
+    <span class="am-ghareeb-nearest-station__pin">
+      <span class="am-ghareeb-nearest-station__core"></span>
+    </span>
+  `,
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
+  popupAnchor: [0, -18],
 })
 
 const TRAVEL_SEGMENT_PALETTES = [
@@ -77,9 +89,9 @@ const TRAVEL_SEGMENT_PALETTES = [
   },
 ]
 
-const STATION_DIRECTIONS_MODES = [
-  { value: 'walk', labelKey: 'nearestDirectionsWalk' },
-  { value: 'transport', labelKey: 'nearestDirectionsTransport' },
+const APPROACH_TARGET_MODES = [
+  { value: 'route-point', label: 'Nearest route point' },
+  { value: 'station', label: 'Nearest station' },
 ]
 
 function ordinalLabel(index) {
@@ -168,11 +180,11 @@ function getPointMarkerStyle({ isEndpoint, isMatchedOrigin, isMatchedDestination
   }
 
   return {
-    outerRadius: 6,
-    innerRadius: 3,
+    outerRadius: 8,
+    innerRadius: 4,
     outerFill: '#FFFFFF',
-    outerStroke: '#CBD5E1',
-    innerFill: '#64748B',
+    outerStroke: accent || '#CBD5E1',
+    innerFill: accent || '#64748B',
     innerStroke: '#FFFFFF',
   }
 }
@@ -409,6 +421,42 @@ function RouteMapStyles() {
           }
         }
 
+        .am-ghareeb-nearest-station {
+          background: transparent;
+          border: 0;
+        }
+
+        .am-ghareeb-nearest-station__pin {
+          position: relative;
+          display: inline-flex;
+          width: 34px;
+          height: 34px;
+          align-items: center;
+          justify-content: center;
+          border-radius: 9999px;
+          background: #D1FAE5;
+          border: 4px solid #047857;
+          box-shadow:
+            0 0 0 4px rgba(4, 120, 87, 0.2),
+            0 10px 22px rgba(15, 23, 42, 0.24);
+        }
+
+        .am-ghareeb-nearest-station__pin::after {
+          content: "";
+          position: absolute;
+          inset: -10px;
+          border-radius: 9999px;
+          border: 2px solid rgba(4, 120, 87, 0.25);
+        }
+
+        .am-ghareeb-nearest-station__core {
+          width: 12px;
+          height: 12px;
+          border-radius: 9999px;
+          background: #047857;
+          border: 3px solid #FFFFFF;
+        }
+
         .route-map-badge-icon {
           background: transparent;
           border: 0;
@@ -512,19 +560,34 @@ function RouteMapStyles() {
   )
 }
 
-function distanceSquared(point, target) {
-  return (point.coords.lat - target.coords.lat) ** 2 + (point.coords.lng - target.coords.lng) ** 2
-}
-
 function normalizeLatLng(point) {
-  const lat = Number(point?.lat)
-  const lng = Number(point?.lng)
+  const lat = Number(Array.isArray(point) ? point[0] : point?.lat)
+  const lng = Number(Array.isArray(point) ? point[1] : point?.lng)
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
   if (lat === 0 && lng === 0) return null
 
   return { lat, lng }
+}
+
+function distanceMetersBetween(pointA, pointB) {
+  const coordsA = normalizeLatLng(pointA?.coords || pointA)
+  const coordsB = normalizeLatLng(pointB?.coords || pointB)
+  if (!coordsA || !coordsB) return Number.POSITIVE_INFINITY
+
+  const toRadians = (value) => (value * Math.PI) / 180
+  const earthRadiusMeters = 6371000
+  const dLat = toRadians(coordsB.lat - coordsA.lat)
+  const dLng = toRadians(coordsB.lng - coordsA.lng)
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(coordsA.lat)) *
+      Math.cos(toRadians(coordsB.lat)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return earthRadiusMeters * c
 }
 
 function parseQueryCoords(searchParams, prefix) {
@@ -541,7 +604,24 @@ function findNearestGeometryIndex(geometryPoints, target) {
   let bestDistance = Number.POSITIVE_INFINITY
 
   geometryPoints.forEach((point, index) => {
-    const score = distanceSquared(point, target)
+    const score = distanceMetersBetween(point, target)
+    if (score < bestDistance) {
+      bestDistance = score
+      bestIndex = index
+    }
+  })
+
+  return bestIndex
+}
+
+function findNearestPolylineIndex(polylineCoords, target) {
+  if (!target?.coords || !polylineCoords.length) return -1
+
+  let bestIndex = -1
+  let bestDistance = Number.POSITIVE_INFINITY
+
+  polylineCoords.forEach((point, index) => {
+    const score = distanceMetersBetween(point, target)
     if (score < bestDistance) {
       bestDistance = score
       bestIndex = index
@@ -581,28 +661,42 @@ function buildRouteMapState(route, matchedOriginId, matchedDestinationId) {
   const matchedDestinationStationIndex = visibleStations.findIndex((station) => String(station?._id) === matchedDestinationId)
   const matchedOriginGeometryIndex = findNearestGeometryIndex(geometryPoints, matchedOriginStation)
   const matchedDestinationGeometryIndex = findNearestGeometryIndex(geometryPoints, matchedDestinationStation)
-  const highlightedStartIndex = Math.min(matchedOriginGeometryIndex, matchedDestinationGeometryIndex)
-  const highlightedEndIndex = Math.max(matchedOriginGeometryIndex, matchedDestinationGeometryIndex)
+  const matchedOriginLineIndex = hasGeneratedPath
+    ? findNearestPolylineIndex(routePathCoords, matchedOriginStation)
+    : matchedOriginGeometryIndex
+  const matchedDestinationLineIndex = hasGeneratedPath
+    ? findNearestPolylineIndex(routePathCoords, matchedDestinationStation)
+    : matchedDestinationGeometryIndex
+  const highlightedStartIndex = Math.min(matchedOriginLineIndex, matchedDestinationLineIndex)
+  const highlightedEndIndex = Math.max(matchedOriginLineIndex, matchedDestinationLineIndex)
   const highlightedStationStartIndex = Math.min(matchedOriginStationIndex, matchedDestinationStationIndex)
   const highlightedStationEndIndex = Math.max(matchedOriginStationIndex, matchedDestinationStationIndex)
+  const hasMatchedStationSegment =
+    matchedOriginStationIndex >= 0 &&
+    matchedDestinationStationIndex >= 0 &&
+    matchedOriginStationIndex !== matchedDestinationStationIndex
 
   const hasMatchedSegment =
-    matchedOriginGeometryIndex >= 0 &&
-    matchedDestinationGeometryIndex >= 0 &&
-    matchedOriginGeometryIndex !== matchedDestinationGeometryIndex
+    matchedOriginLineIndex >= 0 &&
+    matchedDestinationLineIndex >= 0 &&
+    matchedOriginLineIndex !== matchedDestinationLineIndex
 
-  const highlightGeometryCoords = hasGeneratedPath
-    ? []
-    : hasMatchedSegment
-    ? mapGeometrySlice(highlightedStartIndex, highlightedEndIndex + 1)
+  const lineSlice = (start, end) => (
+    hasGeneratedPath
+      ? routePathCoords.slice(start, end)
+      : mapGeometrySlice(start, end)
+  )
+
+  const highlightGeometryCoords = hasMatchedSegment
+    ? lineSlice(highlightedStartIndex, highlightedEndIndex + 1)
     : polylineCoords
 
-  const mutedLeadingCoords = !hasGeneratedPath && hasMatchedSegment
-    ? mapGeometrySlice(0, highlightedStartIndex + 1)
+  const mutedLeadingCoords = hasMatchedSegment
+    ? lineSlice(0, highlightedStartIndex + 1)
     : []
 
-  const mutedTrailingCoords = !hasGeneratedPath && hasMatchedSegment
-    ? mapGeometrySlice(highlightedEndIndex, geometryPoints.length)
+  const mutedTrailingCoords = hasMatchedSegment
+    ? lineSlice(highlightedEndIndex, hasGeneratedPath ? routePathCoords.length : geometryPoints.length)
     : []
 
   return {
@@ -617,8 +711,9 @@ function buildRouteMapState(route, matchedOriginId, matchedDestinationId) {
     highlightGeometryCoords,
     mutedLeadingCoords,
     mutedTrailingCoords,
-    highlightedStationStartIndex: hasMatchedSegment ? highlightedStationStartIndex : 0,
-    highlightedStationEndIndex: hasMatchedSegment
+    hasMatchedStationSegment,
+    highlightedStationStartIndex: hasMatchedStationSegment ? highlightedStationStartIndex : 0,
+    highlightedStationEndIndex: hasMatchedStationSegment
       ? highlightedStationEndIndex
       : Math.max(0, visibleStations.length - 1),
     matchedOriginId,
@@ -638,13 +733,13 @@ function getStationById(routeState, stationId) {
 function findNearestStationToCoords(stations = [], coords) {
   if (!coords) return null
 
-  const target = { coords: { lat: coords[0], lng: coords[1] } }
+  const target = { lat: coords[0], lng: coords[1] }
   let nearestStation = null
   let nearestScore = Number.POSITIVE_INFINITY
 
   stations.forEach((station) => {
     if (!station?.coords?.lat || !station?.coords?.lng) return
-    const score = distanceSquared(station, target)
+    const score = distanceMetersBetween(station, target)
     if (score < nearestScore) {
       nearestScore = score
       nearestStation = station
@@ -652,6 +747,194 @@ function findNearestStationToCoords(stations = [], coords) {
   })
 
   return nearestStation
+}
+
+function findNearestPointOnPolyline(polylineCoords = [], targetCoords) {
+  const target = normalizeLatLng(targetCoords)
+  if (!target || polylineCoords.length === 0) return null
+
+  if (polylineCoords.length === 1) {
+    return normalizeLatLng(polylineCoords[0])
+  }
+
+  let nearestPoint = null
+  let nearestScore = Number.POSITIVE_INFINITY
+
+  for (let index = 0; index < polylineCoords.length - 1; index += 1) {
+    const start = normalizeLatLng(polylineCoords[index])
+    const end = normalizeLatLng(polylineCoords[index + 1])
+    if (!start || !end) continue
+
+    const latScale = Math.cos(((start.lat + end.lat + target.lat) / 3) * Math.PI / 180)
+    const startX = start.lng * latScale
+    const startY = start.lat
+    const endX = end.lng * latScale
+    const endY = end.lat
+    const targetX = target.lng * latScale
+    const targetY = target.lat
+    const dx = endX - startX
+    const dy = endY - startY
+    const segmentLengthSquared = dx * dx + dy * dy
+    const ratio = segmentLengthSquared === 0
+      ? 0
+      : Math.max(0, Math.min(1, ((targetX - startX) * dx + (targetY - startY) * dy) / segmentLengthSquared))
+    const candidate = {
+      lat: start.lat + (end.lat - start.lat) * ratio,
+      lng: start.lng + (end.lng - start.lng) * ratio,
+    }
+    const score = distanceMetersBetween(candidate, target)
+
+    if (score < nearestScore) {
+      nearestScore = score
+      nearestPoint = candidate
+    }
+  }
+
+  return nearestPoint
+    ? { point: nearestPoint, distance: nearestScore }
+    : null
+}
+
+function findNearestPointOnPolylines(polylineGroups = [], targetCoords) {
+  let nearest = null
+
+  polylineGroups.forEach((polylineCoords) => {
+    const candidate = findNearestPointOnPolyline(polylineCoords, targetCoords)
+    if (!candidate) return
+
+    if (!nearest || candidate.distance < nearest.distance) {
+      nearest = candidate
+    }
+  })
+
+  return nearest?.point || null
+}
+
+function getDisplayedRouteLineGroups(routeStates = []) {
+  return routeStates.flatMap((routeState) => {
+    const groups = [
+      routeState?.mutedLeadingCoords || [],
+      routeState?.highlightGeometryCoords || [],
+      routeState?.mutedTrailingCoords || [],
+    ].filter((coords) => coords.length >= 2)
+
+    if (groups.length > 0) {
+      return groups
+    }
+
+    return routeState?.polylineCoords?.length >= 2 ? [routeState.polylineCoords] : []
+  }).filter((coords) => coords.length >= 2)
+}
+
+function getSegmentIntersection(pathStart, pathEnd, routeStart, routeEnd) {
+  const p1 = normalizeLatLng(pathStart)
+  const p2 = normalizeLatLng(pathEnd)
+  const r1 = normalizeLatLng(routeStart)
+  const r2 = normalizeLatLng(routeEnd)
+  if (!p1 || !p2 || !r1 || !r2) return null
+
+  const pathDx = p2.lng - p1.lng
+  const pathDy = p2.lat - p1.lat
+  const routeDx = r2.lng - r1.lng
+  const routeDy = r2.lat - r1.lat
+  const denominator = pathDx * routeDy - pathDy * routeDx
+  if (Math.abs(denominator) < 1e-12) return null
+
+  const deltaX = r1.lng - p1.lng
+  const deltaY = r1.lat - p1.lat
+  const pathRatio = (deltaX * routeDy - deltaY * routeDx) / denominator
+  const routeRatio = (deltaX * pathDy - deltaY * pathDx) / denominator
+  const epsilon = 1e-9
+
+  if (
+    pathRatio < -epsilon ||
+    pathRatio > 1 + epsilon ||
+    routeRatio < -epsilon ||
+    routeRatio > 1 + epsilon
+  ) {
+    return null
+  }
+
+  return {
+    point: {
+      lat: p1.lat + pathDy * Math.max(0, Math.min(1, pathRatio)),
+      lng: p1.lng + pathDx * Math.max(0, Math.min(1, pathRatio)),
+    },
+    pathRatio: Math.max(0, Math.min(1, pathRatio)),
+  }
+}
+
+function trimPathAtFirstRouteIntersection(pathCoords = [], routeLineGroups = []) {
+  if (pathCoords.length < 2 || routeLineGroups.length === 0) return pathCoords
+
+  let firstIntersection = null
+
+  for (let pathIndex = 0; pathIndex < pathCoords.length - 1; pathIndex += 1) {
+    for (const routeCoords of routeLineGroups) {
+      for (let routeIndex = 0; routeIndex < routeCoords.length - 1; routeIndex += 1) {
+        const intersection = getSegmentIntersection(
+          pathCoords[pathIndex],
+          pathCoords[pathIndex + 1],
+          routeCoords[routeIndex],
+          routeCoords[routeIndex + 1],
+        )
+        if (!intersection) continue
+
+        const progress = pathIndex + intersection.pathRatio
+        if (!firstIntersection || progress < firstIntersection.progress) {
+          firstIntersection = {
+            progress,
+            pathIndex,
+            point: intersection.point,
+          }
+        }
+      }
+    }
+
+    if (firstIntersection && firstIntersection.pathIndex === pathIndex) break
+  }
+
+  if (!firstIntersection) return pathCoords
+
+  return [
+    ...pathCoords.slice(0, firstIntersection.pathIndex + 1),
+    [firstIntersection.point.lat, firstIntersection.point.lng],
+  ]
+}
+
+function getDisplayedRouteStations(routeStates = []) {
+  const seenStationKeys = new Set()
+  const stations = []
+
+  routeStates.forEach((routeState) => {
+    ;(routeState?.visibleStations || []).forEach((station) => {
+      if (!station?.coords?.lat || !station?.coords?.lng) return
+      const stationKey = station._id
+        ? String(station._id)
+        : `${station.nameAr || ''}:${station.coords.lat}:${station.coords.lng}`
+      if (seenStationKeys.has(stationKey)) return
+
+      seenStationKeys.add(stationKey)
+      stations.push(station)
+    })
+  })
+
+  return stations
+}
+
+function getCurrentLocationBoardingCandidates(routeState) {
+  if (!routeState) return []
+
+  const destinationIndex = routeState.visibleStations.findIndex(
+    (station) => String(station?._id) === String(routeState.matchedDestinationId),
+  )
+  const stationLimit = destinationIndex >= 0
+    ? destinationIndex
+    : routeState.visibleStations.length - 1
+
+  return routeState.visibleStations
+    .slice(0, stationLimit + 1)
+    .filter((station) => station?._id && station?.coords?.lat && station?.coords?.lng)
 }
 
 function anchorPathToEndpoints(pathCoords, startCoords, endCoords) {
@@ -676,7 +959,7 @@ function isStationRelevant(routeState, stationIndex) {
   if (!routeState) return false
 
   return (
-    routeState.highlightGeometryCoords.length < 2
+    !routeState.hasMatchedStationSegment
     || (
       routeState.highlightedStationStartIndex >= 0
       && routeState.highlightedStationEndIndex >= 0
@@ -736,14 +1019,29 @@ function StationList({ routeState, title, badge }) {
             const isMatchedOrigin = routeState.matchedOriginId && stationId === routeState.matchedOriginId
             const isMatchedDestination = routeState.matchedDestinationId && stationId === routeState.matchedDestinationId
             const isMatched = isMatchedOrigin || isMatchedDestination
+            const isRelevantStation = isStationRelevant(routeState, i)
 
             return (
-              <li key={`${route.routeId}-${i}`} className="flex items-start gap-2">
+              <li
+                key={`${route.routeId}-${i}`}
+                className="flex items-start gap-2"
+                style={{ opacity: isRelevantStation ? 1 : 0.42 }}
+              >
                 <span
                   className="text-xs font-bold mt-0.5 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center"
                   style={{
-                    backgroundColor: isMatchedOrigin ? '#F4A833' : isMatchedDestination ? badge.color : isFirst ? '#FDE7BF' : isLast ? '#DBEAFE' : '#E5E7EB',
-                    color:           isMatched || isFirst || isLast ? '#1B2A4A' : '#6B7280',
+                    backgroundColor: !isRelevantStation
+                      ? '#E5E7EB'
+                      : isMatchedOrigin
+                        ? '#F4A833'
+                        : isMatchedDestination
+                          ? badge.color
+                          : isFirst
+                            ? '#FDE7BF'
+                            : isLast
+                              ? '#DBEAFE'
+                              : '#E5E7EB',
+                    color: !isRelevantStation ? '#94A3B8' : isMatched || isFirst || isLast ? '#1B2A4A' : '#6B7280',
                     fontSize:        10,
                   }}
                 >
@@ -752,7 +1050,10 @@ function StationList({ routeState, title, badge }) {
                 <div className="min-w-0">
                   <p
                     className="text-sm font-medium leading-tight"
-                    style={{ color: hasCoords ? '#1B2A4A' : '#9CA3AF', fontWeight: isMatched ? 700 : 500 }}
+                    style={{
+                      color: !isRelevantStation ? '#94A3B8' : hasCoords ? '#1B2A4A' : '#9CA3AF',
+                      fontWeight: isMatched ? 700 : 500,
+                    }}
                   >
                     {s.nameAr}
                   </p>
@@ -876,11 +1177,11 @@ export default function MapPage() {
   const [locating, setLocating] = useState(false)
   const [locError, setLocError] = useState('')
   const [nearestRoute, setNearestRoute] = useState(null)
-  const [tracking, setTracking] = useState(false)
   const [approachPathCoords, setApproachPathCoords] = useState([])
-  const [nearestDirectionsCoords, setNearestDirectionsCoords] = useState([])
-  const [nearestDirectionsLoading, setNearestDirectionsLoading] = useState(false)
-  const [stationDirectionsMode, setStationDirectionsMode] = useState('walk')
+  const [stationDirectionsMode] = useState('walk')
+  const [approachTargetMode, setApproachTargetMode] = useState('route-point')
+  const queryOriginCoords = parseQueryCoords(searchParams, 'origin')
+  const shouldShowCurrentLocationRouteButton = hasTravelSegmentSelection && !queryOriginCoords
 
   async function refreshNearestRoute(coordsArr) {
     try {
@@ -904,8 +1205,66 @@ export default function MapPage() {
     })
   }
 
+  async function handleUseCurrentLocationForRoute() {
+    setLocError('')
+    if (!navigator.geolocation) {
+      setLocError(t.geoNotSupported)
+      return
+    }
+
+    setLocating(true)
+    try {
+      let coordsArr = userLocation
+
+      if (!coordsArr) {
+        const pos = await getCurrentPosition()
+        coordsArr = [pos.coords.latitude, pos.coords.longitude]
+        setUserLocation(coordsArr)
+        setAccuracy(pos.coords.accuracy)
+      }
+
+      const nextParams = new URLSearchParams(searchParams)
+      const nearestBoardingStation = findNearestStationToCoords(
+        getCurrentLocationBoardingCandidates(firstRouteState),
+        coordsArr,
+      )
+
+      if (!nearestBoardingStation?._id) {
+        setLocError(t.noNearestStation)
+        return
+      }
+
+      const nextTravelSegments = selectedTravelSegments.map((travelSegment, index) => (
+        index === 0
+          ? { ...travelSegment, originStopId: String(nearestBoardingStation._id) }
+          : travelSegment
+      ))
+
+      nextParams.set('travelSegments', JSON.stringify(nextTravelSegments))
+      nextParams.set('originLat', String(coordsArr[0]))
+      nextParams.set('originLng', String(coordsArr[1]))
+      navigate(`/map?${nextParams.toString()}`, { replace: true })
+    } catch (err) {
+      switch (err.code) {
+        case 1:
+          setLocError(t.geoDenied)
+          break
+        case 2:
+          setLocError(t.geoUnavailable)
+          break
+        case 3:
+          setLocError(t.geoTimeout)
+          break
+        default:
+          setLocError(t.geoFailed)
+      }
+    } finally {
+      setLocating(false)
+    }
+  }
+
   useEffect(() => {
-    if (!tracking || !navigator.geolocation) return
+    if (!navigator.geolocation) return
 
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -929,13 +1288,12 @@ export default function MapPage() {
           default:
             setLocError(t.geoFailed)
         }
-        setTracking(false)
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
     )
 
     return () => navigator.geolocation.clearWatch(watchId)
-  }, [tracking])
+  }, [])
 
   const travelSegmentRouteQueries = useQueries({
     queries: selectedTravelSegments.map((travelSegment) => ({
@@ -1011,18 +1369,38 @@ export default function MapPage() {
     sharedTransferSkipKeys.add(`${step.index + 1}:${stationId}`)
   })
 
-  const queryOriginCoords = parseQueryCoords(searchParams, 'origin')
   const firstRouteState = hydratedRouteStates[0] || null
-  const nearestDisplayedRouteStation = firstRouteState && userLocation
-    ? findNearestStationToCoords(firstRouteState.validStations, userLocation)
+  const displayedRouteStations = getDisplayedRouteStations(hydratedRouteStates)
+  const displayedRouteLineGroups = getDisplayedRouteLineGroups(hydratedRouteStates)
+  const activeRouteOriginCoords = queryOriginCoords
+    ? userLocation
+      ? { lat: userLocation[0], lng: userLocation[1] }
+      : queryOriginCoords
     : null
-  const approachBoardStation = firstRouteState
-    ? nearestDisplayedRouteStation || getStationById(firstRouteState, firstRouteState.matchedOriginId) || firstRouteState.route?.origin
+  const currentRouteBoardingStation = queryOriginCoords
+    ? getStationById(firstRouteState, firstRouteState?.matchedOriginId)
     : null
-  const approachBoardCoords = normalizeLatLng(approachBoardStation?.coords)
-  const approachOriginCoords = userLocation
-    ? { lat: userLocation[0], lng: userLocation[1] }
-    : queryOriginCoords
+  const nearestDisplayedRouteStation = currentRouteBoardingStation
+    || (displayedRouteStations.length > 0 && activeRouteOriginCoords
+      ? findNearestStationToCoords(displayedRouteStations, [activeRouteOriginCoords.lat, activeRouteOriginCoords.lng])
+      : null)
+  const nearestDisplayedRoutePoint = activeRouteOriginCoords
+    ? findNearestPointOnPolylines(displayedRouteLineGroups, activeRouteOriginCoords)
+    : null
+  const approachBoardStation = hydratedRouteStates.length > 0
+    ? nearestDisplayedRouteStation || getStationById(firstRouteState, firstRouteState?.matchedOriginId) || firstRouteState?.route?.origin
+    : null
+  const approachBoardCoords = approachTargetMode === 'station'
+    ? normalizeLatLng(approachBoardStation?.coords)
+    : nearestDisplayedRoutePoint || normalizeLatLng(approachBoardStation?.coords)
+  const nearestDisplayedRouteStationCoords = normalizeLatLng(nearestDisplayedRouteStation?.coords)
+  const approachOriginCoords = activeRouteOriginCoords
+  const routeLineGroupsKey = displayedRouteLineGroups
+    .map((coords) => coords.map((point) => point.join(',')).join('|'))
+    .join('::')
+  const routePointDisplayCoords = approachTargetMode === 'route-point' && approachPathCoords.length >= 2
+    ? normalizeLatLng(approachPathCoords[approachPathCoords.length - 1])
+    : approachBoardCoords
 
   useEffect(() => {
     const fallbackCoords = approachOriginCoords && approachBoardCoords
@@ -1057,8 +1435,11 @@ export default function MapPage() {
           .filter(Boolean)
           .map((point) => [point.lat, point.lng])
         const anchoredPathCoords = anchorPathToEndpoints(pathCoords, approachOriginCoords, approachBoardCoords)
+        const displayPathCoords = approachTargetMode === 'route-point'
+          ? trimPathAtFirstRouteIntersection(anchoredPathCoords, displayedRouteLineGroups)
+          : anchoredPathCoords
 
-        setApproachPathCoords(anchoredPathCoords.length >= 2 ? anchoredPathCoords : fallbackCoords)
+        setApproachPathCoords(displayPathCoords.length >= 2 ? displayPathCoords : fallbackCoords)
       })
       .catch(() => {
         if (!cancelled) {
@@ -1075,11 +1456,12 @@ export default function MapPage() {
     approachBoardCoords?.lat,
     approachBoardCoords?.lng,
     stationDirectionsMode,
+    approachTargetMode,
+    routeLineGroupsKey,
   ])
 
   const nearestValidStations = nearestRoute ? (nearestRoute.stations || []).filter((s) => s.coords?.lat && s.coords?.lng) : []
   const nearestStation = nearestRoute?.nearestStation || null
-  const nearestStationCoords = normalizeLatLng(nearestStation?.coords)
   const nearestPathCoords = (!nearestRoute?.pathStale ? nearestRoute?.path || [] : [])
     .filter((point) => point?.lat && point?.lng)
     .map((point) => [point.lat, point.lng])
@@ -1090,20 +1472,9 @@ export default function MapPage() {
     ? nearestPathCoords
     : nearestGeometryCoords
 
-  useEffect(() => {
-    setNearestDirectionsCoords([])
-  }, [
-    nearestStationCoords?.lat,
-    nearestStationCoords?.lng,
-    approachBoardCoords?.lat,
-    approachBoardCoords?.lng,
-    stationDirectionsMode,
-  ])
-
   const fitCoords = [
     ...(userLocation ? [userLocation] : []),
     ...approachPathCoords,
-    ...nearestDirectionsCoords,
     ...hydratedRouteStates.flatMap((routeState) => routeState.polylineCoords || []),
     ...transferSteps.flatMap((step) => step.coords || []),
   ]
@@ -1120,9 +1491,9 @@ export default function MapPage() {
     routeState.mutedLeadingCoords?.length >= 2 ||
     routeState.mutedTrailingCoords?.length >= 2
   )
-  const hasApproachRouteLine = approachPathCoords.length >= 2 || nearestDirectionsCoords.length >= 2
+  const hasApproachRouteLine = approachPathCoords.length >= 2
   const hasNearestStationMarker = hasTravelSegmentSelection
-    ? Boolean(nearestDisplayedRouteStation && approachBoardCoords)
+    ? Boolean(approachTargetMode === 'station' && nearestDisplayedRouteStation && nearestDisplayedRouteStationCoords)
     : Boolean(nearestStation)
   const hasNearestRouteLine = Boolean(
     nearestRoute &&
@@ -1130,41 +1501,6 @@ export default function MapPage() {
     !visibleRouteIds.has(nearestRoute.routeId) &&
     nearestPolylineCoords.length >= 2
   )
-
-  function handleLocate() {
-    setLocError('')
-    if (!navigator.geolocation) {
-      setLocError(t.geoNotSupported)
-      return
-    }
-    setLocating(true)
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const coordsArr = [pos.coords.latitude, pos.coords.longitude]
-        setUserLocation(coordsArr)
-        setAccuracy(pos.coords.accuracy)
-        setLocating(false)
-        await refreshNearestRoute(coordsArr)
-      },
-      (err) => {
-        setLocating(false)
-        switch (err.code) {
-          case err.PERMISSION_DENIED:
-            setLocError(t.geoDenied)
-            break
-          case err.POSITION_UNAVAILABLE:
-            setLocError(t.geoUnavailable)
-            break
-          case err.TIMEOUT:
-            setLocError(t.geoTimeout)
-            break
-          default:
-            setLocError(t.geoFailed)
-        }
-      },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
-    )
-  }
 
   useEffect(() => {
     if (!navigator.geolocation || userLocation) return
@@ -1207,81 +1543,6 @@ export default function MapPage() {
       cancelled = true
     }
   }, [])
-
-  async function handleNearestStationDirections() {
-    setLocError('')
-    if (!navigator.geolocation) {
-      setLocError(t.geoNotSupported)
-      return
-    }
-
-    setNearestDirectionsLoading(true)
-    try {
-      let coordsArr = userLocation
-
-      if (!coordsArr) {
-        const pos = await getCurrentPosition()
-        coordsArr = [pos.coords.latitude, pos.coords.longitude]
-        setUserLocation(coordsArr)
-        setAccuracy(pos.coords.accuracy)
-      }
-
-      let targetStation = firstRouteState
-        ? findNearestStationToCoords(firstRouteState.validStations, coordsArr)
-        : null
-
-      if (!targetStation) {
-        const route = await refreshNearestRoute(coordsArr)
-        targetStation = route?.nearestStation || null
-      }
-
-      const stationCoords = normalizeLatLng(targetStation?.coords)
-      if (!stationCoords) {
-        setLocError(t.noNearestStation)
-        setNearestDirectionsCoords([])
-        return
-      }
-
-      const fallbackCoords = [
-        coordsArr,
-        [stationCoords.lat, stationCoords.lng],
-      ]
-
-      const response = await api.get('/api/routes/path-between', {
-        params: {
-          fromLat: coordsArr[0],
-          fromLng: coordsArr[1],
-          toLat: stationCoords.lat,
-          toLng: stationCoords.lng,
-          mode: stationDirectionsMode,
-        },
-      })
-      const pathCoords = (response.data?.path || [])
-        .map((point) => normalizeLatLng(point))
-        .filter(Boolean)
-        .map((point) => [point.lat, point.lng])
-      const anchoredPathCoords = anchorPathToEndpoints(
-        pathCoords,
-        { lat: coordsArr[0], lng: coordsArr[1] },
-        stationCoords,
-      )
-
-      setNearestDirectionsCoords(anchoredPathCoords.length >= 2 ? anchoredPathCoords : fallbackCoords)
-    } catch (err) {
-      if (err?.code === 1) {
-        setLocError(t.geoDenied)
-      } else if (err?.code === 2) {
-        setLocError(t.geoUnavailable)
-      } else if (err?.code === 3) {
-        setLocError(t.geoTimeout)
-      } else {
-        setLocError(t.nearestDirectionsFailed)
-      }
-      setNearestDirectionsCoords([])
-    } finally {
-      setNearestDirectionsLoading(false)
-    }
-  }
 
   return (
     <div
@@ -1392,16 +1653,6 @@ export default function MapPage() {
             />
           )}
 
-          {nearestDirectionsCoords.length >= 2 && (
-            <RoutePolyline
-              positions={nearestDirectionsCoords}
-              palette={{ casing: '#047857', main: '#6EE7B7' }}
-              weight={4}
-              opacity={0.92}
-              dashed
-            />
-          )}
-
           {queryOriginCoords && (
             <Marker
               position={[queryOriginCoords.lat, queryOriginCoords.lng]}
@@ -1459,7 +1710,9 @@ export default function MapPage() {
           ))}
 
           {hydratedRouteStates.map((routeState, travelSegmentIndex) =>
-            routeState.validStations.map((station, stationIndex) => {
+            routeState.visibleStations.map((station, stationIndex) => {
+              if (!station?.coords?.lat || !station?.coords?.lng) return null
+
               const stationId = station?._id ? String(station._id) : null
               const sharedTransferStep = stationId
                 ? sharedTransferRenderKeys.get(`${travelSegmentIndex}:${stationId}`)
@@ -1561,16 +1814,33 @@ export default function MapPage() {
             ) : null,
           )}
 
-          {hasTravelSegmentSelection && nearestDisplayedRouteStation && approachBoardCoords && (
+          {hasTravelSegmentSelection && approachTargetMode === 'route-point' && routePointDisplayCoords && (
             <CircleMarker
-              center={[approachBoardCoords.lat, approachBoardCoords.lng]}
-              radius={12}
+              center={[routePointDisplayCoords.lat, routePointDisplayCoords.lng]}
+              radius={9}
               pathOptions={{
                 fillColor: '#D1FAE5',
                 color: '#047857',
                 weight: 3,
                 fillOpacity: 0.92,
               }}
+            >
+              <Popup>
+                <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl', textAlign: 'right', minWidth: 130 }}>
+                  <strong style={{ color: '#1B2A4A', display: 'block' }}>Nearest route point</strong>
+                  <span style={{ color: '#047857', fontSize: 12, display: 'block', marginTop: 4 }}>
+                    Current location path target
+                  </span>
+                </div>
+              </Popup>
+            </CircleMarker>
+          )}
+
+          {hasTravelSegmentSelection && approachTargetMode === 'station' && nearestDisplayedRouteStation && nearestDisplayedRouteStationCoords && (
+            <Marker
+              position={[nearestDisplayedRouteStationCoords.lat, nearestDisplayedRouteStationCoords.lng]}
+              icon={nearestStationIcon}
+              zIndexOffset={1200}
             >
               <Popup>
                 <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl', textAlign: 'right', minWidth: 120 }}>
@@ -1581,7 +1851,7 @@ export default function MapPage() {
                   </span>
                 </div>
               </Popup>
-            </CircleMarker>
+            </Marker>
           )}
 
           {nearestRoute && !hasTravelSegmentSelection && !visibleRouteIds.has(nearestRoute.routeId) && nearestPolylineCoords.length > 0 && (
@@ -1635,18 +1905,6 @@ export default function MapPage() {
 
           {userLocation && (
             <>
-              {accuracy ? (
-                <Circle
-                  center={userLocation}
-                  radius={accuracy}
-                  pathOptions={{
-                    color: '#2563EB',
-                    fillColor: '#93C5FD',
-                    fillOpacity: 0.18,
-                    weight: 1.5,
-                  }}
-                />
-              ) : null}
               <Marker position={userLocation} icon={userLocationIcon} zIndexOffset={1000}>
                 <Popup>
                   <div style={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl', textAlign: 'right', minWidth: 140 }}>
@@ -1778,94 +2036,52 @@ export default function MapPage() {
             </div>
           </div>
 
-          <div
-            className="rounded-2xl border p-4 shadow-lg"
-            style={{ backgroundColor: 'rgba(255,255,255,0.96)', borderColor: '#E5E7EB', fontFamily: 'Cairo, sans-serif' }}
-          >
-            <p className="mb-1 text-sm font-extrabold" style={{ color: '#1B2A4A' }}>
-              {t.mapTipTitle}
-            </p>
-            <p className="text-xs leading-6" style={{ color: '#64748B' }}>
-              {t.mapTipBody}
-            </p>
-          </div>
         </div>
 
         <div
           className="absolute bottom-6 left-4 flex flex-col gap-3"
           style={{ zIndex: 1000 }}
         >
-          <div
-            className="rounded-xl border p-1 shadow-lg flex gap-1"
-            style={{ backgroundColor: '#FFFFFF', borderColor: '#E5E7EB', fontFamily: 'Cairo, sans-serif' }}
-          >
-            {STATION_DIRECTIONS_MODES.map((mode) => {
-              const isActive = stationDirectionsMode === mode.value
-              return (
-                <button
-                  key={mode.value}
-                  type="button"
-                  onClick={() => setStationDirectionsMode(mode.value)}
-                  className="rounded-lg px-3 py-2 text-xs font-bold transition-colors"
-                  style={{
-                    backgroundColor: isActive ? '#047857' : 'transparent',
-                    color: isActive ? '#FFFFFF' : '#1B2A4A',
-                  }}
-                >
-                  {t[mode.labelKey]}
-                </button>
-              )
-            })}
-          </div>
-
-          <button
-            onClick={handleNearestStationDirections}
-            disabled={nearestDirectionsLoading}
-            className="rounded-xl px-4 py-2.5 text-sm font-bold shadow-lg flex items-center gap-2 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
-            style={{ backgroundColor: '#047857', color: 'white', fontFamily: 'Cairo, sans-serif' }}
-          >
-            {nearestDirectionsLoading ? (
-              <span
-                className="inline-block h-4 w-4 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(255,255,255,0.45)', borderTopColor: '#FFFFFF' }}
-              />
-            ) : null}
-            {nearestDirectionsLoading ? t.nearestDirectionsLoading : t.nearestDirectionsBtn}
-          </button>
-
-          <button
-            onClick={handleLocate}
-            disabled={locating}
-            className="rounded-xl px-4 py-2.5 text-sm font-bold shadow-lg flex items-center gap-2 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
-            style={{ backgroundColor: '#1B2A4A', color: 'white', fontFamily: 'Cairo, sans-serif' }}
-          >
-            {locating ? (
-              <span
-                className="inline-block h-4 w-4 rounded-full border-2 animate-spin"
-                style={{ borderColor: 'rgba(255,255,255,0.45)', borderTopColor: '#FFFFFF' }}
-              />
-            ) : null}
-            {locating ? t.geoLocating : t.myLocationBtn}
-          </button>
-
-          <button
-            onClick={() => setTracking((value) => !value)}
-            className="rounded-xl px-4 py-2.5 text-sm font-bold shadow-lg transition-opacity hover:opacity-90"
-            style={{
-              backgroundColor: tracking ? '#DC2626' : '#FFFFFF',
-              color: tracking ? '#FFFFFF' : '#1B2A4A',
-              fontFamily: 'Cairo, sans-serif',
-            }}
-          >
-            {tracking ? t.liveTrackingOff : t.liveTrackingOn}
-          </button>
-
-          {accuracy ? (
-            <div
-              className="rounded-xl px-4 py-2 text-sm shadow"
-              style={{ backgroundColor: '#FFFFFF', color: '#1B2A4A', fontFamily: 'Cairo, sans-serif' }}
+          {shouldShowCurrentLocationRouteButton ? (
+            <button
+              type="button"
+              onClick={handleUseCurrentLocationForRoute}
+              disabled={locating || !firstRouteState}
+              className="rounded-xl px-4 py-2.5 text-sm font-bold shadow-lg flex items-center justify-center gap-2 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              style={{ backgroundColor: '#047857', color: '#FFFFFF', fontFamily: 'Cairo, sans-serif' }}
             >
-              {t.accuracyLabel(Math.round(accuracy))}
+              {locating ? (
+                <span
+                  className="inline-block h-4 w-4 rounded-full border-2 animate-spin"
+                  style={{ borderColor: 'rgba(255,255,255,0.45)', borderTopColor: '#FFFFFF' }}
+                />
+              ) : null}
+              {locating ? 'Getting your location...' : 'Update route from my location'}
+            </button>
+          ) : null}
+
+          {hasApproachRouteLine ? (
+            <div
+              className="rounded-xl border p-1 shadow-lg flex gap-1"
+              style={{ backgroundColor: '#FFFFFF', borderColor: '#E5E7EB', fontFamily: 'Cairo, sans-serif' }}
+            >
+              {APPROACH_TARGET_MODES.map((mode) => {
+                const isActive = approachTargetMode === mode.value
+                return (
+                  <button
+                    key={mode.value}
+                    type="button"
+                    onClick={() => setApproachTargetMode(mode.value)}
+                    className="rounded-lg px-3 py-2 text-xs font-bold transition-colors"
+                    style={{
+                      backgroundColor: isActive ? '#047857' : 'transparent',
+                      color: isActive ? '#FFFFFF' : '#1B2A4A',
+                    }}
+                  >
+                    {mode.label}
+                  </button>
+                )
+              })}
             </div>
           ) : null}
         </div>
